@@ -51,20 +51,30 @@ that duration server-side without notice. Percentages colour green ≤30, blue �
 red above; a missing reading is dimmed rather than coloured, because absence of a figure is not
 a low figure.
 
-### Why Grok costs a request
+### Why Grok costs a request, and why it may read 0%
 
-Grok logs a line when it fetches billing, but that line is a hand-built summary rather than
-the response — it prints `historyLen` where the payload has `history`. Reading the log
-therefore shows a percent-free object even when the response had one, and the omission is the
-logger's, not the server's. Nothing caches billing to disk either, so the figure requires the
-same call `/usage` makes.
+Grok has no statusLine equivalent and caches nothing to disk, so its figure needs the same
+call `/usage` makes. Its `billing: fetched credits config` log line looks like a free
+substitute but is a hand-built summary — it prints `historyLen` where the payload has
+`history` and drops `topUpMethod` — so it serves only as a fallback for tier and period.
 
 Overhead is one request per ten minutes for the whole machine: the result is cached in the
 plugin state directory, so extra panes cost nothing and a restart starts warm. The token is
 read from `~/.grok/auth.json` fresh on each call and never written back — that file holds a
-`refresh_token`, and rotating it would log you out of your own CLI. If the call fails the
-sidebar falls back to the log for tier and period, and leaves the percentage blank rather
-than substituting `0`.
+`refresh_token`, and rotating it would log you out of your own CLI.
+
+On a flat subscription with no pay-as-you-go spend the response carries no utilisation field
+at all, and the sidebar reports **0%** — the same thing Grok's own `/usage` prints from the
+identical payload:
+
+```
+Weekly limit: 0%
+Next reset: August 27, 06:45
+```
+
+There is nothing metered to report on such an account: `onDemandCap` and `onDemandUsed` are
+both zero. Only a genuinely unreadable account — no billing response at all — renders without
+a figure.
 
 ## Install
 
@@ -76,10 +86,14 @@ herdr clones the repo, runs the build, and registers it. There is no `plugin upd
 reinstall to pick up a new commit. npm is not an install path: `herdr plugin install` accepts
 GitHub shorthand only.
 
-That is all. On the next herdr server start the plugin installs the Claude statusLine
-collector — the only user setting it writes — backing up `settings.json` and chaining any
-existing `statusLine` rather than replacing it. `sidebar: reinstall Claude quota collector`
-repairs it if the settings file is later edited by hand.
+That is all — there is nothing to invoke by hand. The plugin installs the Claude statusLine
+collector itself, on the first agent detection and again on every server start. It is the
+only user setting this plugin writes, it backs up `settings.json` first, and it is idempotent.
+
+No third-party status line is required. If you already have one it is preserved and run after
+the collector captures its payload; if you have none the collector runs alone and prints
+nothing. `sidebar: reinstall Claude quota collector` repairs it if the settings file is later
+edited by hand.
 
 The sidebar opens automatically when herdr detects an agent (`pane.agent_detected`), one per
 tab. `sidebar: toggle` opens and closes it by hand:

@@ -14,26 +14,25 @@ const CACHE_MS = 10 * 60 * 1000
 const cachePath = () => join(stateDir(), "grok-billing.json")
 
 /**
- * Grok is the one agent that will not hand its utilisation over for free.
+ * Grok is the one agent that will not hand its figures over for free.
  *
- * It has no statusLine-equivalent callback, and although it logs a line when it fetches
- * billing, that line is a hand-built summary rather than the response: it prints
- * `historyLen` where the payload has `history`. Reading the log therefore shows a
- * percent-free object even when the response had one — the omission is the logger's, not
- * the server's. The binary's deserialiser lists creditUsagePercent, monthlyLimit,
- * includedUsed and totalUsed alongside the fields the log does print.
- *
- * Nothing caches billing to disk, so the figure requires the same call `/usage` makes:
+ * It has no statusLine-equivalent callback, and nothing caches billing to disk, so the only
+ * route is the same call `/usage` makes:
  *
  *   GET https://cli-chat-proxy.grok.com/v1/billing?format=credits
  *   Authorization: Bearer <~/.grok/auth.json ["https://auth.x.ai::<client-id>"].key>
  *
+ * Its `billing: fetched credits config` log line looks like a cheaper substitute, but it is a
+ * hand-built summary — it prints `historyLen` where the payload has `history`, and drops
+ * `topUpMethod` entirely. Close enough to mislead, not close enough to trust, so it is used
+ * only as a fallback for tier and period when the call cannot be made.
+ *
  * Overhead is one request per CACHE_MS for the whole machine: the result is cached in the
  * plugin state directory, so extra panes cost nothing and a restart starts warm.
  *
- * The token is read fresh on every call and never written back. Both ~/.grok/auth.json and
- * its Codex counterpart hold a refresh_token, and performing a refresh can rotate it and
- * invalidate the agent's own session — the sidebar must never log the user out of their CLI.
+ * The token is read fresh on every call and never written back. That file holds a
+ * refresh_token, and performing a refresh can rotate it and invalidate the agent's own
+ * session — the sidebar must never log the user out of their CLI.
  */
 async function readToken(): Promise<string | null> {
   const text = await readFile(AUTH, "utf8").catch(() => null)
@@ -86,8 +85,23 @@ const num = (v: any): number | null =>
   typeof v === "number" ? v : typeof v?.val === "number" ? v.val : null
 
 /**
- * Percent, by preference: the server's own figure, else spend against the limit. The `/usage`
- * panel renders "used of $ limit", so the ratio is the same quantity it shows.
+ * Percent, matching what Grok's own `/usage` reports.
+ *
+ * Preference order is the server's figure, then spend against the limit. When neither is
+ * present the answer is 0, not null — and that is a deliberate match rather than a guess.
+ * Running `/usage` in a live Grok session against this same endpoint prints:
+ *
+ *   Weekly limit: 0%
+ *   Next reset: August 27, 06:45
+ *
+ * with a `billing: fetched credits config` logged immediately before it. Grok receives the
+ * same percent-free payload we do and renders 0%, because on a flat subscription with no
+ * pay-as-you-go spend there is nothing metered: onDemandCap and onDemandUsed are both zero.
+ * Showing a dash where the vendor shows 0% would misreport the account as unreadable when it
+ * is simply unused.
+ *
+ * A truly unreadable account — no billing payload at all — still yields null upstream, and
+ * the window renders without a figure.
  */
 function percentOf(cfg: any): number | null {
   const direct = num(cfg.creditUsagePercent ?? cfg.credit_usage_percent)
@@ -95,7 +109,11 @@ function percentOf(cfg: any): number | null {
   const limit = num(cfg.monthlyLimit ?? cfg.monthly_limit)
   const used = num(cfg.totalUsed ?? cfg.total_used) ?? num(cfg.includedUsed ?? cfg.included_used)
   if (limit && used !== null) return Math.min(100, Math.max(0, (used / limit) * 100))
-  return null
+  const onDemandCap = num(cfg.onDemandCap ?? cfg.on_demand_cap)
+  const onDemandUsed = num(cfg.onDemandUsed ?? cfg.on_demand_used)
+  if (onDemandCap) return Math.min(100, Math.max(0, ((onDemandUsed ?? 0) / onDemandCap) * 100))
+  // Billing answered, nothing is metered: the same 0% Grok itself shows.
+  return onDemandUsed === null && onDemandCap === null ? null : 0
 }
 
 /** Tier and period without any request — used when the call fails or the token is stale. */
@@ -132,8 +150,6 @@ export async function readGrok(): Promise<QuotaSnapshot | null> {
   const windows: QuotaWindow[] = [{
     id: "period",
     label: String(period.type ?? "").toLowerCase().includes("weekly") ? "7d" : "30d",
-    // Stays null when the figure is genuinely absent. Never 0 — a confident zero is the bug
-    // the predecessor shipped, and it reads as "nothing used" rather than "not reported".
     percent: percentOf(cfg),
     resetsAt: Number.isFinite(end) ? Math.floor(end / 1000) : null,
     windowMinutes: Number.isFinite(start) && Number.isFinite(end) ? Math.round((end - start) / 60000) : null,
