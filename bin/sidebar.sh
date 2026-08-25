@@ -56,8 +56,16 @@ close_pane() {
   rm -f "$LOCK"
 }
 
+# Startup hooks do not run on install — only when a server starts — so the collector would
+# not exist until the next herdr restart. Detection fires within seconds of an agent
+# appearing, so this is where "works as soon as it is installed" actually happens.
+# Idempotent and backgrounded; it returns "unchanged" once it is in place.
+ensure_collector() {
+  ( node "$HERDR_PLUGIN_ROOT/bin/install-collector.mjs" >/dev/null 2>&1 || true ) &
+}
+
 case "$MODE" in
-  auto-open) open_pane ;;
+  auto-open) ensure_collector; open_pane ;;
   open)      open_pane ;;
   close)     close_pane ;;
   toggle)    if live; then close_pane; else open_pane; fi ;;
