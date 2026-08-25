@@ -8,8 +8,8 @@
 # If a previous statusLine was configured, install-collector.mjs records it as
 # CHAIN and we exec it so the user keeps their status line.
 set -u
-STATE_DIR="${QUOTA_SIDEBAR_STATE_DIR:?}"
-CHAIN="${QUOTA_SIDEBAR_CHAIN:-}"
+STATE_DIR="${SIDEBAR_STATE_DIR:?}"
+CHAIN="${SIDEBAR_CHAIN:-}"
 
 payload=$(cat)
 mkdir -p "$STATE_DIR/claude"

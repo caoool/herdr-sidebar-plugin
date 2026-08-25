@@ -1,7 +1,7 @@
 {
-  "name": "herdr-quota-sidebar",
+  "name": "herdr-sidebar-plugin",
   "version": "0.1.0",
-  "description": "herdr sidebar showing subscription quota for the agent in the current pane (Claude Code, Codex, Grok).",
+  "description": "Right-hand sidebar for herdr, showing per-agent information for Claude Code, Codex, and Grok. First section: subscription quota.",
   "type": "module",
   "license": "MIT",
   "author": "lu",

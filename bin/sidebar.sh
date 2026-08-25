@@ -18,7 +18,7 @@ LOCK="$STATE/panes/${TAB//:/_}"
 # `pane resize --amount` is a fraction of the TAB's total width by which the divider moves
 # (verified: amount 0.25 shifted a divider 59 columns in a 235-column tab), so the amount
 # needed depends on the current layout. Read it, then move the divider once.
-TARGET_COLS="${QUOTA_SIDEBAR_COLS:-34}"
+TARGET_COLS="${HERDR_SIDEBAR_COLS:-34}"
 narrow() {
   "$HERDR" pane layout --pane "$1" 2>/dev/null | TARGET="$TARGET_COLS" PANE="$1" \
     /usr/bin/env python3 -c '
@@ -43,7 +43,7 @@ open_pane() {
   # opens a second sidebar — and if our own pane were ever misdetected as an agent, the
   # hook would recurse.
   if live; then return 0; fi
-  id=$("$HERDR" plugin pane open --plugin caoool.quota-sidebar --entrypoint sidebar \
+  id=$("$HERDR" plugin pane open --plugin caoool.sidebar --entrypoint sidebar \
         --placement split --direction right --target-pane "$TARGET" --no-focus 2>/dev/null \
       | /usr/bin/env python3 -c 'import json,sys;print(json.load(sys.stdin)["result"]["plugin_pane"]["pane"]["pane_id"])' 2>/dev/null) || return 0
   [ -n "$id" ] || return 0

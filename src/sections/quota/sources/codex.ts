@@ -1,7 +1,7 @@
 import { readdir, stat } from "node:fs/promises"
 import { join } from "node:path"
 import { homedir } from "node:os"
-import { tailLines } from "../tail.js"
+import { tailLines } from "../../../tail.js"
 import type { QuotaSnapshot, QuotaWindow } from "../types.js"
 
 const ROOT = join(homedir(), ".codex", "sessions")

@@ -5,53 +5,45 @@
  * as a right-hand split. It is the only long-lived process the plugin gets: it starts when
  * the pane opens and dies when it closes.
  *
- * Rendering here is deliberately plain so the skeleton runs end to end. Swap it for the
- * @opentui/solid components from opencode-cpa-quota-plugin — OpenTUI is a standalone
- * library (native Zig core, node entry point), so those components do not need rewriting,
- * only remounting in this process instead of opencode's TuiPluginApi.
+ * The pane owns no data. It resolves which agent this pane belongs to, drives each section's
+ * refresh, and stacks their output. Sections own their sources and their rendering, so
+ * adding MCP status or the task list is a new directory under src/sections and one entry
+ * in SECTIONS.
+ *
+ * Rendering is deliberately plain text so the skeleton runs end to end. Swap it for the
+ * @opentui/solid components from opencode-cpa-quota-plugin — OpenTUI is a standalone library
+ * (native Zig core, node entry point), so those components do not need rewriting, only
+ * remounting in this process instead of opencode's TuiPluginApi.
  */
 import { watch } from "node:fs"
-import { join } from "node:path"
-import { homedir } from "node:os"
-import { listAgents, resolveSubject, selfTabId, stateDir } from "./herdr.js"
-import { readClaude, claudeDir } from "./sources/claude.js"
-import { readCodex } from "./sources/codex.js"
-import { readGrok, GROK_LOG } from "./sources/grok.js"
-import { block, TERMINAL_STYLE } from "./format.js"
-import type { PaneAgent, ProviderKind, QuotaSnapshot } from "./types.js"
+import { listAgents, resolveSubject, selfTabId } from "./herdr.js"
+import { TERMINAL } from "./ansi.js"
+import { quotaSection } from "./sections/quota/index.js"
+import type { Section } from "./sections/types.js"
+import type { PaneAgent } from "./types.js"
 
-const ORDER: ProviderKind[] = ["claude", "codex", "grok"]
+const SECTIONS: Section[] = [quotaSection()]
 
 let subject: PaneAgent | null = null
-let snapshots: Partial<Record<ProviderKind, QuotaSnapshot | null>> = {}
 let dirty = true
 
 async function refresh() {
-  // Every provider is read every time: quota is account-wide, so a Claude pane shows the
-  // Codex and Grok figures too. The pane's own agent is used only to order the blocks.
-  const [claude, codex, grok, agents] = await Promise.all([
-    readClaude().catch(() => null),
-    readCodex().catch(() => null),
-    readGrok().catch(() => null),
-    listAgents().catch(() => []),
-  ])
-  snapshots = { claude, codex, grok }
-  subject = resolveSubject(agents, selfTabId(), subject)
+  // Keep the previous subject when the snapshot comes back empty, rather than blanking.
+  subject = resolveSubject(await listAgents().catch(() => []), selfTabId(), subject)
+  await Promise.all(SECTIONS.map((s) => s.refresh({ subject }).catch(() => {})))
   dirty = true
 }
-
-/** The pane's own agent leads, so the one you are working with sits where your eye starts. */
-const ordered = (): ProviderKind[] =>
-  subject ? [subject.agent, ...ORDER.filter((a) => a !== subject!.agent)] : ORDER
 
 function render() {
   if (!dirty) return
   dirty = false
   const width = Math.max(18, (process.stdout.columns ?? 34) - 4)
   const out: string[] = []
-  for (const agent of ordered()) {
+  for (const section of SECTIONS) {
+    const lines = section.render(width, TERMINAL)
+    if (!lines.length) continue
     if (out.length) out.push("")
-    out.push(...block(agent, snapshots[agent] ?? null, width, Date.now(), TERMINAL_STYLE))
+    out.push(...lines)
   }
   process.stdout.write("\x1b[2J\x1b[H\n" + out.map((l) => (l ? `  ${l}` : l)).join("\n") + "\n")
 }
@@ -63,13 +55,12 @@ const bump = () => {
   if (timer) clearTimeout(timer)
   timer = setTimeout(() => refresh().then(render), 200)
 }
-const watched = [claudeDir(), GROK_LOG, stateDir(), join(homedir(), ".codex", "sessions")]
-for (const target of watched) {
+for (const target of new Set(SECTIONS.flatMap((s) => s.watch()))) {
   try { watch(target, { persistent: false, recursive: true }, bump) } catch { /* not present yet */ }
 }
 
-// A slow tick covers anything the watchers miss — a directory that did not exist at startup,
-// or a platform where recursive watching is unavailable.
+// A slow tick covers what the watchers cannot: a directory that did not exist at startup, a
+// platform without recursive watching, and a change of subject when focus moves.
 setInterval(() => refresh().then(render), 5000)
 process.stdout.on("resize", () => { dirty = true; render() })
 refresh().then(render)

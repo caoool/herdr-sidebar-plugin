@@ -1,5 +1,6 @@
-import type { ProviderKind, QuotaSnapshot, QuotaWindow } from "./types.js"
-import { bold, paintPercent } from "./ansi.js"
+import type { QuotaSnapshot, QuotaWindow } from "./types.js"
+import type { ProviderKind } from "../../types.js"
+import type { Style } from "../../ansi.js"
 
 /** A window of a day or more is reported in days remaining rather than a clock time. */
 const MULTI_DAY_MINUTES = 1440
@@ -71,18 +72,12 @@ const DISPLAY: Record<ProviderKind, string> = { claude: "CLAUDE", codex: "CODEX"
  * Disappearing would be ambiguous: it could mean "not installed", "never used", or "the
  * collector is not running", and the last of those is the one worth noticing.
  */
-export type Style = {
-  bold: (s: string) => string
-  paint: (text: string, percent: number | null) => string
-}
-const PLAIN: Style = { bold: (s) => s, paint: (t) => t }
-
 export function block(
   agent: ProviderKind,
   snap: QuotaSnapshot | null,
   width: number,
   now = Date.now(),
-  style: Style = PLAIN,
+  style: Style = { bold: (s) => s, paint: (t) => t },
 ): string[] {
   const name = DISPLAY[agent]
   const heading = style.bold(name)
@@ -93,5 +88,3 @@ export function block(
   return [heading, ...snap.windows.map((w) => row(w, width, now, style.paint))]
 }
 
-/** What the pane renders with; tests use the default PLAIN so they assert layout, not codes. */
-export const TERMINAL_STYLE: Style = { bold, paint: paintPercent }

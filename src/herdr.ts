@@ -18,7 +18,7 @@ export const selfPaneId = (): string | null => process.env.HERDR_PANE_ID ?? null
 export const selfTabId = (): string | null => process.env.HERDR_TAB_ID ?? null
 export const herdrBin = (): string => process.env.HERDR_BIN_PATH ?? "herdr"
 export const stateDir = (): string =>
-  process.env.HERDR_PLUGIN_STATE_DIR ?? `${process.env.HOME}/.local/state/herdr/plugins/caoool.quota-sidebar`
+  process.env.HERDR_PLUGIN_STATE_DIR ?? `${process.env.HOME}/.local/state/herdr/plugins/caoool.sidebar`
 
 const KINDS: ProviderKind[] = ["claude", "codex", "grok"]
 const asKind = (v: unknown): ProviderKind | null =>

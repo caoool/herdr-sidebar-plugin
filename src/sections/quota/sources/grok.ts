@@ -1,6 +1,6 @@
 import { join } from "node:path"
 import { homedir } from "node:os"
-import { tailLines } from "../tail.js"
+import { tailLines } from "../../../tail.js"
 import type { QuotaSnapshot, QuotaWindow } from "../types.js"
 
 export const GROK_LOG = join(homedir(), ".grok", "logs", "unified.jsonl")

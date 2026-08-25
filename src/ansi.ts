@@ -42,3 +42,12 @@ export function percentStyle(percent: number | null): string {
 
 export const paintPercent = (text: string, percent: number | null): string =>
   wrap(percentStyle(percent), text)
+
+/** Injected rather than imported directly so tests can render unstyled and assert layout. */
+export type Style = {
+  bold: (s: string) => string
+  paint: (text: string, percent: number | null) => string
+}
+
+export const PLAIN: Style = { bold: (s) => s, paint: (t) => t }
+export const TERMINAL: Style = { bold, paint: paintPercent }

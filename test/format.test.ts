@@ -1,7 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { row, hhmm, resetText, block } from "../src/format.js"
-import type { QuotaSnapshot, QuotaWindow } from "../src/types.js"
+import { row, hhmm, resetText, block } from "../src/sections/quota/format.js"
+import type { QuotaSnapshot, QuotaWindow } from "../src/sections/quota/types.js"
 
 const at = (h: number, m: number): number => {
   const d = new Date(); d.setHours(h, m, 0, 0); return Math.floor(d.getTime() / 1000)

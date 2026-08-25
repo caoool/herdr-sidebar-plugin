@@ -1,10 +1,10 @@
-id = "caoool.quota-sidebar"
-name = "Quota Sidebar"
+id = "caoool.sidebar"
+name = "Sidebar"
 version = "0.1.0"
 # 0.8.0 is the oldest verified release: pane.agent_detected is in PLUGIN_HOOK_EVENT_KINDS
 # and `plugin pane open --placement split --direction right` exists there.
 min_herdr_version = "0.8.0"
-description = "Right-hand sidebar showing subscription quota for the agent in this pane."
+description = "Right-hand sidebar for herdr. Sections: subscription quota (MCP status and tasks to follow)."
 platforms = ["macos", "linux"]
 
 [[build]]
@@ -27,13 +27,13 @@ command = ["node", "dist/pane.js"]
 
 [[actions]]
 id = "toggle"
-title = "quota: toggle sidebar"
+title = "sidebar: toggle"
 contexts = ["pane", "workspace"]
 command = ["bash", "bin/sidebar.sh", "toggle"]
 
 [[actions]]
 id = "connect-claude"
-title = "quota: connect Claude (installs statusLine collector)"
+title = "sidebar: connect Claude quota (installs statusLine collector)"
 contexts = ["workspace"]
 command = ["node", "bin/install-collector.mjs"]
 

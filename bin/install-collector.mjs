@@ -38,8 +38,8 @@ if (chain) console.log(`chaining existing statusLine: ${chain}`)
 settings.statusLine = {
   type: "command",
   command:
-    `QUOTA_SIDEBAR_STATE_DIR=${JSON.stringify(state)} ` +
-    (chain ? `QUOTA_SIDEBAR_CHAIN=${JSON.stringify(chain)} ` : "") +
+    `SIDEBAR_STATE_DIR=${JSON.stringify(state)} ` +
+    (chain ? `SIDEBAR_CHAIN=${JSON.stringify(chain)} ` : "") +
     `bash ${JSON.stringify(collector)}`,
   // Claude Code re-invokes on this interval even while idle, which is what keeps quota
   // fresh without anyone polling an API.

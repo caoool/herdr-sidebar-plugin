@@ -1,7 +1,7 @@
 import { readFile, readdir } from "node:fs/promises"
 import { join } from "node:path"
 import type { QuotaSnapshot, QuotaWindow } from "../types.js"
-import { stateDir } from "../herdr.js"
+import { stateDir } from "../../../herdr.js"
 
 /**
  * Claude never writes quota to disk on its own: cachedUsageUtilization in ~/.claude.json

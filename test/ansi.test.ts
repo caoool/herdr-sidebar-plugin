@@ -1,8 +1,8 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { percentStyle, paintPercent, bold } from "../src/ansi.js"
-import { row, block, TERMINAL_STYLE } from "../src/format.js"
-import type { QuotaSnapshot, QuotaWindow } from "../src/types.js"
+import { percentStyle, paintPercent, bold, TERMINAL } from "../src/ansi.js"
+import { row, block } from "../src/sections/quota/format.js"
+import type { QuotaSnapshot, QuotaWindow } from "../src/sections/quota/types.js"
 
 const GREEN = "38;5;41"
 const BLUE = "38;5;39"
@@ -51,13 +51,13 @@ test("provider names render bold, and the heading width is unaffected", () => {
     agent: "claude", sessionId: null, plan: null, windows: [win()],
     credits: null, observedAt: Date.now(), source: "statusline",
   }
-  const [heading] = block("claude", snap, 30, Date.now(), TERMINAL_STYLE)
+  const [heading] = block("claude", snap, 30, Date.now(), TERMINAL)
   assert.equal(strip(heading), "CLAUDE")
   assert.notEqual(heading, "CLAUDE")
   assert.equal(strip(bold("CODEX")), "CODEX")
 })
 
 test("an empty provider line keeps its width once styling is stripped", () => {
-  const [line] = block("codex", null, 30, Date.now(), TERMINAL_STYLE)
+  const [line] = block("codex", null, 30, Date.now(), TERMINAL)
   assert.equal(strip(line).length, 30)
 })
