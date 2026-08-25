@@ -39,6 +39,23 @@ export function resetText(win: QuotaWindow, now: number = Date.now()): string {
  * A null percentage renders as an em dash rather than 0: a confident zero is worse than an
  * honest blank, and Grok's unified-billing accounts report no percentage at all.
  */
+/**
+ * Whether a reset is computed rather than reported.
+ *
+ * At zero usage Codex returns `resets_at` as exactly now + one window, which drifts with the
+ * wall clock and means nothing. Grok also sits at 0% on an unmetered subscription, but its
+ * period end is a real date — its own `/usage` prints "Weekly limit: 0%" and "Next reset"
+ * together — so suppressing on the percentage alone hides a fact worth showing.
+ *
+ * The tell is the distance: a fabricated reset lands a full window away almost to the second,
+ * which a genuine one effectively never does.
+ */
+export function isDerivedReset(win: QuotaWindow, now: number = Date.now()): boolean {
+  if (win.percent !== 0 || win.resetsAt === null || !win.windowMinutes) return false
+  const secondsAway = win.resetsAt - Math.floor(now / 1000)
+  return Math.abs(secondsAway - win.windowMinutes * 60) < 90
+}
+
 export function row(
   win: QuotaWindow,
   width: number,
@@ -49,9 +66,7 @@ export function row(
   // providers — "4%" under "15%" reads as a column only if the digits agree.
   const pct = (win.percent === null ? "—" : `${Math.round(win.percent)}%`).padStart(4)
   const label = win.label.padEnd(3)
-  // At 0% Codex reports resets_at as now+window, drifting with the wall clock, so a
-  // countdown there would be fiction.
-  const right = win.percent === 0 ? "" : resetText(win, now)
+  const right = isDerivedReset(win, now) ? "" : resetText(win, now)
   // Padding is computed from PLAIN widths. Escape sequences occupy no columns, so measuring
   // the painted string would push every coloured row out of alignment.
   const gap = Math.max(1, width - label.length - 1 - pct.length - right.length)

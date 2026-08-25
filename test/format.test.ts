@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { row, hhmm, resetText, block } from "../src/sections/quota/format.js"
+import { row, hhmm, resetText, block, isDerivedReset } from "../src/sections/quota/format.js"
 import type { QuotaSnapshot, QuotaWindow } from "../src/sections/quota/types.js"
 
 const at = (h: number, m: number): number => {
@@ -68,9 +68,17 @@ test("percentages align on the % regardless of digit count", () => {
   assert.equal(mid.indexOf("%"), narrow.indexOf("%"))
 })
 
-test("suppresses the reset when percent is 0 and leaves no trailing space", () => {
-  const line = row(fiveHour({ percent: 0 }), 30, now)
-  assert.equal(line, "5h    0%")
+test("suppresses a reset that is exactly one window away at 0% — Codex fabricates it", () => {
+  const win = fiveHour({ percent: 0, resetsAt: Math.floor(now / 1000) + 300 * 60 })
+  assert.ok(isDerivedReset(win, now))
+  assert.equal(row(win, 30, now), "5h    0%")
+})
+
+test("keeps a real reset at 0% — Grok is unmetered, not unknown", () => {
+  // Grok's own /usage prints "Weekly limit: 0%" and "Next reset" together.
+  const win = sevenDay({ percent: 0, resetsAt: Math.floor((now + 1.4 * DAY) / 1000) })
+  assert.ok(!isDerivedReset(win, now))
+  assert.ok(row(win, 30, now).endsWith("1D"))
 })
 
 test("keeps at least one space when the row is cramped", () => {
