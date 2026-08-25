@@ -1,0 +1,21 @@
+{
+  "name": "herdr-quota-sidebar",
+  "version": "0.1.0",
+  "description": "herdr sidebar showing subscription quota for the agent in the current pane (Claude Code, Codex, Grok).",
+  "type": "module",
+  "license": "MIT",
+  "author": "lu",
+  "private": true,
+  "scripts": {
+    "build": "esbuild src/pane.ts --bundle --format=esm --platform=node --target=es2022 --outfile=dist/pane.js",
+    "typecheck": "tsc --noEmit",
+    "test": "esbuild test/*.test.ts --bundle --platform=node --format=esm --outdir=.test-dist --log-level=warning && node --test .test-dist/*.test.js",
+    "check": "npm run typecheck && npm test && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "24.12.2",
+    "esbuild": "0.25.6",
+    "typescript": "5.9.3"
+  },
+  "engines": { "node": ">=20" }
+}
