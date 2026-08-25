@@ -13,10 +13,10 @@ command = ["npm", "ci"]
 [[build]]
 command = ["npm", "run", "build"]
 
-# Re-open sidebars after a herdr restart or live handoff. One-shot: it reads the panes
-# it owned from state and re-opens them, then exits.
+# Runs once per server start. Clears stale pane locks and makes sure the Claude quota
+# collector is installed, so the plugin needs no manual setup after install.
 [[startup]]
-command = ["node", "bin/restore.mjs"]
+command = ["node", "bin/startup.mjs"]
 
 # The sidebar itself. Placement is overridden at open time to a right split.
 [[panes]]
@@ -33,7 +33,7 @@ command = ["bash", "bin/sidebar.sh", "toggle"]
 
 [[actions]]
 id = "connect-claude"
-title = "sidebar: connect Claude quota (installs statusLine collector)"
+title = "sidebar: reinstall Claude quota collector"
 contexts = ["workspace"]
 command = ["node", "bin/install-collector.mjs"]
 

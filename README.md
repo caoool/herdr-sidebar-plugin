@@ -24,14 +24,14 @@ call, no rate-limit exposure.
 |---|---|---|
 | **Claude** | a `statusLine` command that prints nothing — invisible, fires ~10s even when idle | `rate_limits.five_hour` / `.seven_day` → `{used_percentage, resets_at}` |
 | **Codex** | `~/.codex/sessions/**/rollout-<ts>-<session-uuid>.jsonl`, appended live per turn | `rate_limits.primary{used_percent, window_minutes, resets_at}`, `.secondary`, `credits`, `plan_type` |
-| **Grok** | `~/.grok/logs/unified.jsonl`, line `msg: "billing: fetched credits config"` | `subscriptionTier`, `currentPeriod{type,end}` — **no utilisation percent** on unified-billing accounts |
+| **Grok** | `GET cli-chat-proxy.grok.com/v1/billing?format=credits`, cached 10 min per machine | `creditUsagePercent` (or `totalUsed`/`monthlyLimit`), `currentPeriod`, `subscriptionTier` |
 
 Readings are account-wide: quota belongs to an account, not a session, so each source takes its
 newest reading across all sessions and every agent's figures appear in every sidebar. Reads are
 bounded to the tail of the file, so cost does not scale with session length.
 
-Codex needs no setup. Claude needs the collector installed once. Grok needs nothing and gives
-no percentage — see below.
+Codex and Claude need no setup — the collector installs itself on the first server start
+after install. Grok is the one agent that will not give its figure away for free; see below.
 
 ```
   CLAUDE
@@ -51,14 +51,20 @@ that duration server-side without notice. Percentages colour green ≤30, blue �
 red above; a missing reading is dimmed rather than coloured, because absence of a figure is not
 a low figure.
 
-### Why Grok shows a dash
+### Why Grok costs a request
 
-On a `isUnifiedBillingUser` account the billing response carries no `creditUsagePercent` —
-that key, and `productUsage`, `usagePercent`, `monthlyLimit`, appear nowhere in Grok's logs.
-Grok's own client parses those fields, so they exist for some account types, but the server
-does not send them here. The sidebar shows the period and its reset and leaves the figure
-blank rather than substituting `0`, which is what the predecessor did and which renders as a
-confident, permanent zero.
+Grok logs a line when it fetches billing, but that line is a hand-built summary rather than
+the response — it prints `historyLen` where the payload has `history`. Reading the log
+therefore shows a percent-free object even when the response had one, and the omission is the
+logger's, not the server's. Nothing caches billing to disk either, so the figure requires the
+same call `/usage` makes.
+
+Overhead is one request per ten minutes for the whole machine: the result is cached in the
+plugin state directory, so extra panes cost nothing and a restart starts warm. The token is
+read from `~/.grok/auth.json` fresh on each call and never written back — that file holds a
+`refresh_token`, and rotating it would log you out of your own CLI. If the call fails the
+sidebar falls back to the log for tier and period, and leaves the percentage blank rather
+than substituting `0`.
 
 ## Install
 
@@ -70,13 +76,10 @@ herdr clones the repo, runs the build, and registers it. There is no `plugin upd
 reinstall to pick up a new commit. npm is not an install path: `herdr plugin install` accepts
 GitHub shorthand only.
 
-Claude quota additionally needs its collector, which is the only user setting this plugin
-writes. It backs up `settings.json` and chains any existing `statusLine` rather than replacing
-it:
-
-```sh
-herdr plugin action invoke caoool.sidebar.connect-claude
-```
+That is all. On the next herdr server start the plugin installs the Claude statusLine
+collector — the only user setting it writes — backing up `settings.json` and chaining any
+existing `statusLine` rather than replacing it. `sidebar: reinstall Claude quota collector`
+repairs it if the settings file is later edited by hand.
 
 The sidebar opens automatically when herdr detects an agent (`pane.agent_detected`), one per
 tab. `sidebar: toggle` opens and closes it by hand:
@@ -98,7 +101,7 @@ herdr-plugin.toml            manifest: pane, actions, pane.agent_detected hook, 
 bin/sidebar.sh               tab-scoped idempotent open/close + width computation
 bin/statusline-collector.sh  the silent Claude collector (prints nothing, chains)
 bin/install-collector.mjs    chain-safe installer, backs up settings.json
-bin/restore.mjs              startup hook: clears stale pane locks after a herdr restart
+bin/startup.mjs              startup hook: clears stale pane locks, ensures the collector
 src/pane.ts                  resolves the pane's agent, drives sections, stacks output
 src/herdr.ts                 snapshot client, pane identity, subject resolution
 src/ansi.ts                  styling primitives and the utilisation colour ramp
