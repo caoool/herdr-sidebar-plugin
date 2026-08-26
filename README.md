@@ -136,7 +136,7 @@ dashes.
 | model | `model.display_name` | `turn_context.model` | `summary.json` `current_model_id` |
 | effort | `effort.level` | `turn_context.effort` | `summary.json` `reasoning_effort` |
 | context | `context_window.used_percentage` + `context_window_size` | `token_count.info` + `model_context_window` | `updates.jsonl` `_meta.totalTokens` ÷ `models_cache` `context_window` |
-| speed | last response's tokens ÷ Δ`total_api_duration_ms` | Δ`total_token_usage.output_tokens` ÷ Δtimestamp | `turn_completed` `usage.outputTokens ÷ apiDurationMs` |
+| speed | transcript, 120s window of request intervals | Δ`total_token_usage.output_tokens` ÷ Δtimestamp | `turn_completed` `usage.outputTokens ÷ apiDurationMs` |
 | permission | the pane's footer, with a hook as fallback | `turn_context.approval_policy` | `config.toml` only, machine-wide |
 | sandbox | layered settings `sandbox.enabled` | `turn_context.sandbox_policy.type` | `summary.json` `sandbox_profile` |
 
@@ -167,10 +167,21 @@ account rather than which model is answering.
 Grok's permission mode is only in machine-wide config, so a session started with an overriding
 flag would be misreported; it is carried as the weaker claim it is.
 
-Claude's `total_output_tokens` is **not** cumulative — it equals `current_usage.output_tokens` in
-every session observed — so the rate divides that response's output by the increase in
-`cost.total_api_duration_ms`. The last measured rate is held while the agent is idle, since it
-remains true, and reads a dash only before any response has been seen.
+Claude's rate is computed the way its status line computes it, so the two agree: each assistant
+message in the transcript is paired with the entry that prompted it, giving that response's
+duration; tokens and durations are summed over a 120-second window ending at the transcript's
+latest entry, with overlapping intervals merged so a streamed message counts its wall time once.
+
+Idle time between turns falls outside every interval and so never enters the denominator — a
+rate that counted the user's typing as generation time would not be a generation rate. Only the
+tail of the transcript is read: these files reach tens of megabytes and this runs every few
+seconds, where the status line can afford to read the whole file once per render.
+
+The obvious cheaper route does not work. `context_window.total_output_tokens` is **not**
+cumulative — it equals `current_usage.output_tokens` in every session observed — so differencing
+it is meaningless, and dividing one response's tokens by the increase in
+`cost.total_api_duration_ms` understates by roughly the number of API calls in the sampling
+interval, which in a tool loop is several.
 
 ## Install
 

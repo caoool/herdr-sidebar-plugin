@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { claudeDir } from "../../quota/sources/claude.js"
 import { permissionFromScreen, sandboxFromSettings } from "./claude-live.js"
+import { outputSpeed } from "./claude-speed.js"
 import { cleanModelName } from "../format.js"
 import type { SessionInfo } from "../types.js"
 
@@ -16,34 +17,6 @@ import type { SessionInfo } from "../types.js"
  * rather than guessed.
  */
 
-type Sample = { outputTokens: number; apiMs: number; perSecond: number | null }
-const samples = new Map<string, Sample>()
-
-/**
- * Output rate for the most recent response.
- *
- * `context_window.total_output_tokens` is not a cumulative counter — it equals
- * `current_usage.output_tokens` in every session observed, so it is the last response's output
- * and differencing it would be meaningless. What is cumulative is `cost.total_api_duration_ms`,
- * so when the reported output changes, that response's tokens are divided by the API time
- * consumed since the previous sample.
- *
- * The rate is held between responses rather than dropped to null, since "the last response ran
- * at 42 t/s" stays true while the agent sits idle. It is null only until a first response has
- * been seen, which is honest: nothing has been measured yet.
- */
-function rateFor(sessionId: string, outputTokens: number, apiMs: number): number | null {
-  const previous = samples.get(sessionId)
-  let perSecond = previous?.perSecond ?? null
-
-  if (previous && outputTokens !== previous.outputTokens) {
-    const seconds = (apiMs - previous.apiMs) / 1000
-    if (outputTokens > 0 && seconds > 0) perSecond = outputTokens / seconds
-  }
-  samples.set(sessionId, { outputTokens, apiMs, perSecond })
-  return perSecond
-}
-
 export async function readClaudeSession(sessionId: string, paneId?: string): Promise<SessionInfo | null> {
   const text = await readFile(join(claudeDir(), `${sessionId}.json`), "utf8").catch(() => null)
   if (!text) return null
@@ -51,7 +24,6 @@ export async function readClaudeSession(sessionId: string, paneId?: string): Pro
   try { d = JSON.parse(text) } catch { return null }
 
   const cw = d.context_window ?? {}
-  const cost = d.cost ?? {}
 
   // The screen is the only live source — no hook fires when the mode is cycled — so it wins.
   // The hook-written file is the fallback for when the footer is covered by a dialog.
@@ -80,11 +52,9 @@ export async function readClaudeSession(sessionId: string, paneId?: string): Pro
             windowSize: typeof cw.context_window_size === "number" ? cw.context_window_size : null,
           }
         : null,
-    outputPerSecond: rateFor(
-      sessionId,
-      typeof cw.total_output_tokens === "number" ? cw.total_output_tokens : 0,
-      typeof cost.total_api_duration_ms === "number" ? cost.total_api_duration_ms : 0,
-    ),
+    outputPerSecond: typeof d.transcript_path === "string"
+      ? await outputSpeed(d.transcript_path).catch(() => null)
+      : null,
     observedAt: typeof d._collected_at === "number" ? d._collected_at : Date.now(),
   }
 }
