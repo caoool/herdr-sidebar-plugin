@@ -6,6 +6,7 @@ import type { ProviderKind } from "../../types.js"
 import type { Section, SectionContext } from "../types.js"
 import type { QuotaSnapshot } from "./types.js"
 import { block } from "./format.js"
+import { sanitize } from "./freshness.js"
 import { readClaude, claudeDir } from "./sources/claude.js"
 import { readCodex } from "./sources/codex.js"
 import { readGrok, GROK_LOG } from "./sources/grok.js"
@@ -13,20 +14,25 @@ import { readGrok, GROK_LOG } from "./sources/grok.js"
 const ORDER: ProviderKind[] = ["claude", "codex", "grok"]
 
 /**
- * Prefer a reading with figures over one without.
+ * Prefer a reading with figures over one without — but never at the cost of showing something
+ * untrue.
  *
- * A source can momentarily come back empty — a log rotating, a directory read losing a race,
- * a request timing out — and replacing a good reading with that produced a visible blank.
- * Quota changes slowly, so the last known figures are a far better answer for a few seconds
- * than an em dash. A fresh reading always wins when it actually carries windows.
+ * A source can momentarily come back empty: a log rotating, a directory read losing a race, a
+ * request timing out. Replacing good figures with a blank for one refresh is worse than
+ * briefly showing values a few seconds old, so the previous reading is remembered.
+ *
+ * Both sides are sanitized first. Without that, remembering would defeat expiry — the moment
+ * a source correctly reported "this window has closed, I have nothing current", the stale
+ * snapshot it had just replaced would come straight back.
  */
-function keepBest(
+export function keepBest(
   previous: QuotaSnapshot | null | undefined,
   next: QuotaSnapshot | null,
+  now: number,
 ): QuotaSnapshot | null {
-  if (next && next.windows.length) return next
-  if (previous && previous.windows.length) return previous
-  return next ?? previous ?? null
+  const fresh = sanitize(next, now)
+  if (fresh) return fresh
+  return sanitize(previous ?? null, now)
 }
 
 /**
@@ -57,10 +63,11 @@ export function quotaSection(): Section {
         readCodex().catch(() => null),
         readGrok().catch(() => null),
       ])
+      const now = Date.now()
       snapshots = {
-        claude: keepBest(snapshots.claude, claude),
-        codex: keepBest(snapshots.codex, codex),
-        grok: keepBest(snapshots.grok, grok),
+        claude: keepBest(snapshots.claude, claude, now),
+        codex: keepBest(snapshots.codex, codex, now),
+        grok: keepBest(snapshots.grok, grok, now),
       }
       subject = ctx.subject
     },

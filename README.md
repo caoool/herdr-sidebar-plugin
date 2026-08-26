@@ -56,6 +56,21 @@ ramp. Every other agent's block recedes: the name loses its weight and its rows 
 keeping the band hue at reduced intensity. Their figures are still worth showing, since quota
 is account-wide, but they are not what this pane is spending.
 
+### Nothing stale reaches the screen
+
+A window whose reset has passed describes a period that has ended: its percentage says nothing
+about the current one and its countdown is meaningless. Such a window is dropped, and an agent
+left with none renders `—`. The next boundary is never inferred — stepping the old reset
+forward by the window length does not land where the server actually resets.
+
+This is enforced in one place, over every source, and over remembered readings as well as
+fresh ones. A reading is remembered so that a momentary failure does not blank the panel, but
+it is re-checked each time; otherwise remembering would hand back exactly what expiry had just
+discarded.
+
+A reading that is old but still inside its window is kept. Usage only rises, so it understates
+the truth rather than inventing it.
+
 Reset renders as days remaining for a window of a day or more, and as a 24h clock time
 otherwise — chosen from the reported window *duration*, not its label, because Codex changes
 that duration server-side without notice. Percentages colour green ≤30, blue ≤60, orange ≤80,

@@ -4,6 +4,7 @@ import { homedir } from "node:os"
 import { spawn } from "node:child_process"
 import { tailLines } from "../../../tail.js"
 import { cached } from "../../../cache.js"
+import { isExpired } from "../freshness.js"
 import type { QuotaSnapshot, QuotaWindow } from "../types.js"
 
 export const CODEX_SESSIONS = join(homedir(), ".codex", "sessions")
@@ -35,22 +36,6 @@ const toWindow = (
     active: true,
   }
 }
-
-/**
- * A window whose reset has already passed describes a period that has ended, and its
- * percentage says nothing about the current one.
- *
- * This is not hypothetical: Codex only writes a rollout while it runs, so a machine that has
- * not run it for a week still has a newest rollout from a week ago. The sidebar was rendering
- * an eight-day-old "4%" against a reset six days gone, displayed as "0D" — a stale figure and
- * a meaningless countdown, both looking entirely current.
- *
- * The next boundary cannot be computed either: stepping the old reset forward by the window
- * length does not land where the server actually resets. So an expired reading is discarded
- * rather than repaired, and the live path is asked instead.
- */
-const expired = (w: QuotaWindow, now: number): boolean =>
-  w.resetsAt !== null && w.resetsAt * 1000 <= now
 
 async function newestRollout(): Promise<string | null> {
   const stack = [CODEX_SESSIONS]
@@ -90,7 +75,7 @@ async function fromRollout(now: number): Promise<QuotaSnapshot | null> {
     const windows = [
       toWindow("primary", rl.primary?.used_percent, rl.primary?.window_minutes, rl.primary?.resets_at),
       toWindow("secondary", rl.secondary?.used_percent, rl.secondary?.window_minutes, rl.secondary?.resets_at),
-    ].filter((w): w is QuotaWindow => w !== null && !expired(w, now))
+    ].filter((w): w is QuotaWindow => w !== null && !isExpired(w, now))
     if (!windows.length) return null
 
     return {
@@ -169,7 +154,7 @@ async function fromAppServer(now: number): Promise<QuotaSnapshot | null> {
   const windows = [
     toWindow("primary", rl.primary?.usedPercent, rl.primary?.windowDurationMins, rl.primary?.resetsAt),
     toWindow("secondary", rl.secondary?.usedPercent, rl.secondary?.windowDurationMins, rl.secondary?.resetsAt),
-  ].filter((w): w is QuotaWindow => w !== null && !expired(w, now))
+  ].filter((w): w is QuotaWindow => w !== null && !isExpired(w, now))
   if (!windows.length) return null
 
   return {
@@ -191,4 +176,5 @@ export async function readCodex(now: number = Date.now()): Promise<QuotaSnapshot
   return (await fromRollout(now)) ?? (await fromAppServer(now))
 }
 
-export { expired as _expired, toWindow as _toWindow }
+/** Exported for tests: label derivation and field-shape handling. */
+export { toWindow as _toWindow }

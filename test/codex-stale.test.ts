@@ -1,6 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { _expired as expired, _toWindow as toWindow } from "../src/sections/quota/sources/codex.js"
+import { _toWindow as toWindow } from "../src/sections/quota/sources/codex.js"
+import { isExpired as expired } from "../src/sections/quota/freshness.js"
 import type { QuotaWindow } from "../src/sections/quota/types.js"
 
 const NOW = 1_800_000_000_000
