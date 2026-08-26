@@ -44,6 +44,25 @@ export const paintPercent = (text: string, percent: number | null): string =>
   wrap(percentStyle(percent), text)
 
 /**
+ * The same ramp, shifted for context.
+ *
+ * A context window and a quota window are not equally urgent at the same reading. Quota at 80%
+ * means most of a period's budget is gone with no recourse but to wait; context at 80% is
+ * ordinary working territory, and only becomes pressing as compaction approaches. Red therefore
+ * starts at 90 here, and orange covers the long middle.
+ */
+export function contextStyle(percent: number | null): string {
+  if (percent === null) return DIM
+  if (percent <= 30) return GREEN
+  if (percent <= 60) return BLUE
+  if (percent < 90) return ORANGE
+  return RED
+}
+
+export const paintContext = (text: string, percent: number | null): string =>
+  wrap(contextStyle(percent), text)
+
+/**
  * Dim + colour, then re-assert dim.
  *
  * An inactive block is dimmed as a whole, but the percentage still needs its band colour so
@@ -65,6 +84,13 @@ export type Style = {
   line?: (s: string) => string
   /** A two-state indicator: on reads as good, off as inert. */
   mark?: (text: string, on: boolean) => string
+  /** The context ramp, which reaches red later than the quota one. */
+  paintContext?: (text: string, percent: number | null) => string
+  /**
+   * Row labels and provider names — the words that say what a value *is*, as opposed to the
+   * value itself. They recede so the figures carry the eye.
+   */
+  label?: (s: string) => string
 }
 
 export const PLAIN: Style = { bold: (s) => s, paint: (t) => t }
@@ -75,8 +101,17 @@ export const PLAIN: Style = { bold: (s) => s, paint: (t) => t }
  */
 export const mark = (text: string, on: boolean): string => wrap(on ? GREEN : DIM, text)
 
+/**
+ * Naming text, one step back from the values.
+ *
+ * Uses the terminal's dim attribute rather than a fixed grey: dim is resolved against whatever
+ * theme is in use, so it stays legible on a light background where a hardcoded grey would wash
+ * out and on a dark one where it would glare.
+ */
+export const label = (s: string): string => wrap(DIM, s)
+
 /** The pane's own agent: bold name, full-strength ramp. */
-export const TERMINAL: Style = { bold, paint: paintPercent, mark }
+export const TERMINAL: Style = { bold, paint: paintPercent, paintContext, mark, label }
 
 /**
  * Every other agent. Their figures are still worth showing — quota is account-wide — but they

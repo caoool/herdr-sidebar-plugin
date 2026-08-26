@@ -44,11 +44,16 @@ export function abbreviate(n: number): string {
 export type Segment = { text: string; paint?: (s: string) => string }
 
 /** A fixed label on the left, the value flush right. */
-export function labelled(label: string, segments: Segment[], width: number): string {
+export function labelled(
+  label: string,
+  segments: Segment[],
+  width: number,
+  paintLabel: (s: string) => string = (s) => s,
+): string {
   const plain = segments.map((s) => s.text).join("")
   const gap = Math.max(1, width - label.length - plain.length)
   const painted = segments.map((s) => (s.paint ? s.paint(s.text) : s.text)).join("")
-  return label + " ".repeat(gap) + painted
+  return paintLabel(label) + " ".repeat(gap) + painted
 }
 
 /** Joins the halves of a two-part value, collapsing to a dash when neither half is known. */
@@ -70,13 +75,14 @@ export function sessionBlock(info: SessionInfo | null, width: number, style: Sty
   if (!info) return []
   const finish = style.line ?? ((s: string) => s)
   const mark = style.mark ?? ((t: string) => t)
+  const asLabel = style.label ?? ((t: string) => t)
 
   const context = info.context
   const percent = context?.usedPercent ?? null
   const contextSegments = twoPart(
     percent === null ? null : `${Math.round(percent)}%`,
     context?.windowSize == null ? null : abbreviate(context.windowSize),
-    (t) => style.paint(t, percent),
+    (t) => (style.paintContext ?? style.paint)(t, percent),
   )
 
   // The sandbox state is a lit or unlit dot rather than a policy name: the policies differ per
@@ -90,9 +96,9 @@ export function sessionBlock(info: SessionInfo | null, width: number, style: Sty
   return [
     finish(style.bold("SESSION")),
     "",
-    finish(labelled("Model", twoPart(info.model, info.effort), width)),
-    finish(labelled("Mode", [{ text: "SB " }, sandbox, { text: " " }, { text: info.permissionMode ?? DASH }], width)),
-    finish(labelled("Context", contextSegments, width)),
-    finish(labelled("Speed", [{ text: info.outputPerSecond === null ? `${DASH} t/s` : `${Math.round(info.outputPerSecond)} t/s` }], width)),
+    finish(labelled("MODEL", twoPart(info.model, info.effort), width, asLabel)),
+    finish(labelled("MODE", [sandbox, { text: " " }, { text: info.permissionMode ?? DASH }], width, asLabel)),
+    finish(labelled("CONTEXT", contextSegments, width, asLabel)),
+    finish(labelled("SPEED", [{ text: info.outputPerSecond === null ? `${DASH} t/s` : `${Math.round(info.outputPerSecond)} t/s` }], width, asLabel)),
   ]
 }

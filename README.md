@@ -126,16 +126,21 @@ dashes.
 ```
   SESSION
 
-  Model      gpt-5.6-sol | high
-  Mode           SB ● on-request
-  Context             72% | 258K
-  Speed                   41 t/s
+  MODEL      gpt-5.6-sol | high
+  MODE              ● on-request
+  CONTEXT             72% | 258K
+  SPEED                   41 t/s
 ```
 
-The context percentage carries the same colour ramp as quota, since both answer "how much of a
-budget is gone" — a reader who has learned the ramp in one place reads it in the other without
-relearning. `SB` is a lit dot when the agent is sandboxed and an unlit one when it is not; the
-glyph changes as well as the colour, so the state survives a terminal with colour disabled.
+The context percentage uses the same ramp as quota, shifted: red starts at 90 rather than 80. A
+context window and a quota window are not equally urgent at the same reading — quota at 80%
+means most of a period's budget is gone with no recourse but to wait, while context at 80% is
+ordinary working territory that only becomes pressing as compaction approaches.
+
+Sandbox is a lit dot when the agent is sandboxed and an unlit one when it is not; the glyph
+changes as well as the colour, so the state survives a terminal with colour disabled. Row labels
+and provider names are dimmed — they say what a value *is*, and the figures are what is being
+read.
 
 The agents describe sandboxing differently — a Codex `sandbox_policy`, a Grok profile name, a
 Claude boolean — so only on/off is shown, which is the one distinction common to all three. For

@@ -22,11 +22,11 @@ test("an inactive block dims its title and every row", () => {
   for (const line of lines) assert.ok(line.startsWith(DIM), `not dimmed: ${JSON.stringify(line)}`)
 })
 
-test("the active block is not dimmed and keeps its bold title", () => {
+test("an active block dims only its name, leaving the figures at full strength", () => {
+  // The provider name says which figures these are; the figures are what is being read.
   const lines = block("claude", snap, 30, Date.now(), TERMINAL)
-  assert.ok(!lines[0].startsWith(DIM))
-  assert.ok(lines[0].startsWith("\x1b[1m"))
-  for (const line of lines) assert.ok(!line.startsWith(DIM))
+  assert.ok(lines[0].startsWith(DIM), "the provider name is naming text")
+  for (const row of lines.slice(1)) assert.ok(!row.startsWith(DIM), `row dimmed: ${row}`)
 })
 
 test("dimming never changes the layout", () => {

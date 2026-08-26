@@ -30,15 +30,15 @@ test("a name that is entirely parenthetical is kept rather than blanked", () => 
 })
 
 test("a labelled row puts the label left and the value flush right", () => {
-  const line = labelled("Model", [{ text: "Opus 5 | high" }], 30)
-  assert.ok(line.startsWith("Model"))
+  const line = labelled("MODEL", [{ text: "Opus 5 | high" }], 30)
+  assert.ok(line.startsWith("MODEL"))
   assert.ok(line.endsWith("Opus 5 | high"))
   assert.equal(line.length, 30)
 })
 
 test("painting a segment never changes the row's width", () => {
-  const plain = labelled("Context", [{ text: "82%" }], 30)
-  const painted = labelled("Context", [{ text: "82%", paint: (t) => `\x1b[31m${t}\x1b[0m` }], 30)
+  const plain = labelled("CONTEXT", [{ text: "82%" }], 30)
+  const painted = labelled("CONTEXT", [{ text: "82%", paint: (t) => `\x1b[31m${t}\x1b[0m` }], 30)
   assert.equal(strip(painted), plain)
 })
 
@@ -47,27 +47,32 @@ test("the block is the four specified rows, titled, with no gauge", () => {
   assert.equal(lines.length, 6)
   assert.equal(lines[0], "SESSION")
   assert.equal(lines[1], "")
-  assert.ok(lines[2].startsWith("Model") && lines[2].endsWith("gpt-5.6-sol | high"))
-  assert.ok(lines[3].startsWith("Mode") && lines[3].endsWith("SB ● on-request"))
-  assert.ok(lines[4].startsWith("Context") && lines[4].endsWith("82% | 258K"))
-  assert.ok(lines[5].startsWith("Speed") && lines[5].endsWith("155 t/s"))
+  assert.ok(lines[2].startsWith("MODEL") && lines[2].endsWith("gpt-5.6-sol | high"))
+  assert.ok(lines[3].startsWith("MODE") && lines[3].endsWith("● on-request"))
+  assert.ok(lines[4].startsWith("CONTEXT") && lines[4].endsWith("82% | 258K"))
+  assert.ok(lines[5].startsWith("SPEED") && lines[5].endsWith("155 t/s"))
   for (const l of lines) assert.ok(!l.includes("█") && !l.includes("░"), `gauge left in: ${l}`)
 })
 
 test("an unsandboxed agent shows an unlit dot, not a missing one", () => {
   const [, , , mode] = sessionBlock({ ...info, sandboxEnabled: false }, 30, PLAIN)
-  assert.ok(mode.endsWith("SB ○ on-request"), mode)
+  assert.ok(mode.endsWith("○ on-request"), mode)
 })
 
 test("unknown sandbox state is a dash rather than a guessed dot", () => {
   const [, , , mode] = sessionBlock({ ...info, sandboxEnabled: null }, 30, PLAIN)
-  assert.ok(mode.endsWith("SB — on-request"), mode)
+  assert.ok(mode.endsWith("— on-request"), mode)
 })
 
-test("the context percentage carries the same ramp as quota", () => {
-  // 82% is the red band; a reader who learned the ramp on quota reads it here unchanged.
-  const [, , , , context] = sessionBlock(info, 30, TERMINAL)
-  assert.match(context, /\x1b\[38;5;203m82%/)
+test("context reaches red later than quota does", () => {
+  // Quota at 82% means most of a period is gone with no recourse but to wait. Context at 82%
+  // is ordinary working territory, so it stays orange and turns red only near compaction.
+  const [, , , , orange] = sessionBlock(info, 30, TERMINAL)
+  assert.match(orange, /\x1b\[38;5;208m82%/)
+
+  const near = { ...info, context: { usedPercent: 90, windowSize: 258_400 } }
+  const [, , , , red] = sessionBlock(near, 30, TERMINAL)
+  assert.match(red, /\x1b\[38;5;203m90%/)
 })
 
 test("a low context reading is green, like a low quota reading", () => {
@@ -93,6 +98,12 @@ test("half a two-part value still renders the other half", () => {
 
 test("no session means no block at all", () => {
   assert.deepEqual(sessionBlock(null, 30, PLAIN), [])
+})
+
+test("row labels are dimmed, values are not", () => {
+  const [, , model] = sessionBlock(info, 30, TERMINAL)
+  assert.match(model, /^\x1b\[2mMODEL\x1b\[0m/)
+  assert.ok(model.endsWith("gpt-5.6-sol | high"), "the value keeps full strength")
 })
 
 test("styling leaves every row the same width", () => {

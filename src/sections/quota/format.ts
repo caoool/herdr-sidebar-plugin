@@ -96,13 +96,15 @@ export function block(
 ): string[] {
   const name = DISPLAY[agent]
   const finish = style.line ?? ((s: string) => s)
+  // The provider name says which figures these are; the figures are what is being read.
+  const heading = (style.label ?? style.bold)(name)
   if (!snap || snap.windows.length === 0) {
     // Gap measured from the plain name, for the same reason as in row().
-    const empty = style.bold(name) + " ".repeat(Math.max(1, width - name.length - 1)) + "\u2014"
+    const empty = heading + " ".repeat(Math.max(1, width - name.length - 1)) + "\u2014"
     return [finish(empty)]
   }
   return [
-    finish(style.bold(name)),
+    finish(heading),
     ...snap.windows.map((w) => finish(row(w, width, now, style.paint))),
   ]
 }

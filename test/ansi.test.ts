@@ -46,15 +46,14 @@ test("styling never changes column widths", () => {
   }
 })
 
-test("provider names render bold, and the heading width is unaffected", () => {
+test("the active provider name is naming text, dimmed like a row label", () => {
   const snap: QuotaSnapshot = {
     agent: "claude", sessionId: null, plan: null, windows: [win()],
     credits: null, observedAt: Date.now(), source: "statusline",
   }
   const [heading] = block("claude", snap, 30, Date.now(), TERMINAL)
+  assert.match(heading, /^\x1b\[2mCLAUDE/)
   assert.equal(strip(heading), "CLAUDE")
-  assert.notEqual(heading, "CLAUDE")
-  assert.equal(strip(bold("CODEX")), "CODEX")
 })
 
 test("an empty provider line keeps its width once styling is stripped", () => {
