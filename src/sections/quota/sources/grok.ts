@@ -1,8 +1,8 @@
-import { readFile, writeFile, mkdir, stat, rename } from "node:fs/promises"
+import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { homedir } from "node:os"
 import { tailLines } from "../../../tail.js"
-import { stateDir } from "../../../herdr.js"
+import { cached } from "../../../cache.js"
 import type { QuotaSnapshot, QuotaWindow } from "../types.js"
 
 export const GROK_LOG = join(homedir(), ".grok", "logs", "unified.jsonl")
@@ -11,7 +11,7 @@ const BILLING = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
 
 /** One request per this interval per machine, shared by every sidebar pane through the cache. */
 const CACHE_MS = 10 * 60 * 1000
-const cachePath = () => join(stateDir(), "grok-billing.json")
+
 
 /**
  * Grok is the one agent that will not hand its figures over for free.
@@ -64,22 +64,7 @@ async function fetchBilling(): Promise<any | null> {
   return await res.json().catch(() => null)
 }
 
-/** Cached fetch. Writes atomically so a concurrent reader never sees a partial file. */
-async function billing(): Promise<any | null> {
-  const path = cachePath()
-  const info = await stat(path).catch(() => null)
-  if (info && Date.now() - info.mtimeMs < CACHE_MS) {
-    const text = await readFile(path, "utf8").catch(() => null)
-    if (text) { try { return JSON.parse(text) } catch { /* refetch */ } }
-  }
-  const fresh = await fetchBilling()
-  if (!fresh) return null
-  await mkdir(stateDir(), { recursive: true }).catch(() => {})
-  const tmp = `${path}.${process.pid}.tmp`
-  await writeFile(tmp, JSON.stringify(fresh)).catch(() => {})
-  await rename(tmp, path).catch(() => {})
-  return fresh
-}
+const billing = () => cached<any>("grok-billing.json", CACHE_MS, fetchBilling)
 
 const num = (v: any): number | null =>
   typeof v === "number" ? v : typeof v?.val === "number" ? v.val : null

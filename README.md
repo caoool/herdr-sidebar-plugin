@@ -23,7 +23,7 @@ call, no rate-limit exposure.
 | | channel | payload |
 |---|---|---|
 | **Claude** | a `statusLine` command that prints nothing — invisible, fires ~10s even when idle | `rate_limits.five_hour` / `.seven_day` → `{used_percentage, resets_at}` |
-| **Codex** | `~/.codex/sessions/**/rollout-<ts>-<session-uuid>.jsonl`, appended live per turn | `rate_limits.primary{used_percent, window_minutes, resets_at}`, `.secondary`, `credits`, `plan_type` |
+| **Codex** | its session rollout while it runs, else `codex app-server` → `account/rateLimits/read`, cached 10 min | `primary`/`secondary` `{used_percent, window_minutes, resets_at}`, `credits`, `plan_type` |
 | **Grok** | `GET cli-chat-proxy.grok.com/v1/billing?format=credits`, cached 10 min per machine | `creditUsagePercent` (or `totalUsed`/`monthlyLimit`), `currentPeriod`, `subscriptionTier` |
 
 Readings are account-wide: quota belongs to an account, not a session, so every agent's figures
@@ -61,6 +61,20 @@ otherwise — chosen from the reported window *duration*, not its label, because
 that duration server-side without notice. Percentages colour green ≤30, blue ≤60, orange ≤80,
 red above; a missing reading is dimmed rather than coloured, because absence of a figure is not
 a low figure.
+
+### Why Codex sometimes needs a subprocess
+
+Codex appends its rate-limit state to the session rollout as it works, so while it is running
+the reading is current and free. But it writes nothing when it is not running, so a machine
+that has not used it for a week still has a week-old rollout — and a reading whose window has
+since closed says nothing about the current one. Stepping the old reset forward by the window
+length does not land where the server actually resets, so an expired reading is discarded
+rather than repaired.
+
+When no rollout covers the current window, `codex app-server --stdio` answers
+`account/rateLimits/read` in about a second, cached ten minutes per machine. Codex owns the
+credential, so the sidebar never reads `~/.codex/auth.json`. If that token has been revoked
+the call fails and Codex renders `—`; `codex login` restores it.
 
 ### Why Grok costs a request, and why it may read 0%
 
