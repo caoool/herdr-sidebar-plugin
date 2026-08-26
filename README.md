@@ -136,7 +136,16 @@ nothing. `sidebar: reinstall Claude quota collector` repairs it if the settings 
 edited by hand.
 
 The sidebar opens automatically when herdr detects an agent (`pane.agent_detected`), one per
-tab. `sidebar: toggle` opens and closes it by hand:
+tab, and closes itself once that agent is gone.
+
+Closing has to be noticed rather than received. Quitting an agent leaves its pane alive at a
+shell prompt, so herdr fires no pane event — the pane simply drops out of `agents[]`. The
+sidebar watches for that absence, and waits out a short grace period first, because detection
+is screen-based and can lose an agent for a moment during a redraw or a restart. A sidebar
+opened by hand in a tab where no agent has ever run stays put. Set
+`HERDR_SIDEBAR_AUTO_CLOSE=0` to keep it open regardless.
+
+`sidebar: toggle` opens and closes it by hand:
 
 ```toml
 [[keys.command]]

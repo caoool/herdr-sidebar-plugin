@@ -57,13 +57,24 @@ export async function listAgents(): Promise<PaneAgent[]> {
  * The last resolved agent is kept as a fallback so a transient empty snapshot does not blank
  * the panel.
  */
+/**
+ * The agent panes this sidebar is responsible for: those in its own tab, excluding itself.
+ *
+ * Emptiness here is meaningful — an agent that quits leaves its pane alive at a shell prompt,
+ * so herdr fires no pane event; the pane simply drops out of agents[]. That absence is the
+ * only signal the sidebar gets that its reason for being open has gone.
+ */
+export function agentsInTab(agents: PaneAgent[], tabId: string | null): PaneAgent[] {
+  const self = selfPaneId()
+  return agents.filter((a) => a.paneId !== self && (!tabId || a.tabId === tabId))
+}
+
 export function resolveSubject(
   agents: PaneAgent[],
   tabId: string | null,
   previous: PaneAgent | null,
 ): PaneAgent | null {
-  const self = selfPaneId()
-  const candidates = agents.filter((a) => a.paneId !== self && (!tabId || a.tabId === tabId))
+  const candidates = agentsInTab(agents, tabId)
   if (candidates.length === 0) return previous
   if (candidates.length === 1) return candidates[0]
   return (

@@ -16,8 +16,10 @@
  * remounting in this process instead of opencode's TuiPluginApi.
  */
 import { watch } from "node:fs"
-import { listAgents, resolveSubject, selfTabId } from "./herdr.js"
+import { agentsInTab, herdrBin, listAgents, resolveSubject, selfPaneId, selfTabId } from "./herdr.js"
+import { execFile } from "node:child_process"
 import { TERMINAL } from "./ansi.js"
+import { autoDismiss } from "./dismiss.js"
 import { quotaSection } from "./sections/quota/index.js"
 import type { Section } from "./sections/types.js"
 import type { PaneAgent } from "./types.js"
@@ -27,9 +29,24 @@ const SECTIONS: Section[] = [quotaSection()]
 let subject: PaneAgent | null = null
 let dirty = true
 
+/** Opens with an agent, so it leaves with one. See src/dismiss.ts for why this is polled. */
+const dismisser = autoDismiss(process.env.HERDR_SIDEBAR_AUTO_CLOSE !== "0", 12_000)
+
+function dismiss() {
+  const self = selfPaneId()
+  // Ask herdr to close the pane rather than merely exiting: whether a pane disappears when
+  // its command ends is herdr's configuration to decide, and this leaves nothing behind.
+  if (self) execFile(herdrBin(), ["plugin", "pane", "close", self], () => process.exit(0))
+  else process.exit(0)
+}
+
 async function refresh() {
+  const agents = await listAgents().catch(() => [])
+  const now = Date.now()
+  dismisser.note(agentsInTab(agents, selfTabId()).length > 0, now)
+  if (dismisser.ready(now)) return dismiss()
   // Keep the previous subject when the snapshot comes back empty, rather than blanking.
-  subject = resolveSubject(await listAgents().catch(() => []), selfTabId(), subject)
+  subject = resolveSubject(agents, selfTabId(), subject)
   await Promise.all(SECTIONS.map((s) => s.refresh({ subject }).catch(() => {})))
   dirty = true
 }
