@@ -26,9 +26,15 @@ call, no rate-limit exposure.
 | **Codex** | `~/.codex/sessions/**/rollout-<ts>-<session-uuid>.jsonl`, appended live per turn | `rate_limits.primary{used_percent, window_minutes, resets_at}`, `.secondary`, `credits`, `plan_type` |
 | **Grok** | `GET cli-chat-proxy.grok.com/v1/billing?format=credits`, cached 10 min per machine | `creditUsagePercent` (or `totalUsed`/`monthlyLimit`), `currentPeriod`, `subscriptionTier` |
 
-Readings are account-wide: quota belongs to an account, not a session, so each source takes its
-newest reading across all sessions and every agent's figures appear in every sidebar. Reads are
-bounded to the tail of the file, so cost does not scale with session length.
+Readings are account-wide: quota belongs to an account, not a session, so every agent's figures
+appear in every sidebar. Reads are bounded to the tail of the file, so cost does not scale with
+session length.
+
+Claude needs reconciling across sessions, because each live session caches `rate_limits` from
+*its own* last API response — an idle session holds a staler figure, and one that has not made
+its first call carries none. Usage only rises within a window, so the largest reading of a
+window is necessarily the latest; a window is identified by its `resets_at`, so only the
+current one is considered and yesterday's high-water mark cannot bleed into today.
 
 Codex and Claude need no setup — the collector installs itself on the first server start
 after install. Grok is the one agent that will not give its figure away for free; see below.

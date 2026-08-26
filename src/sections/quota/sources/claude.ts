@@ -9,67 +9,97 @@ import { stateDir } from "../../../herdr.js"
  * carries rate_limits (14 records across SessionStart / PostToolUse / TaskCreated /
  * TaskCompleted / Stop — zero hits).
  *
- * The one channel is the statusLine command, which Claude Code invokes about every 10s
- * even while idle. It renders whatever the command prints, so a command that prints NOTHING
- * is a silent collector: verified to keep firing with the footer unchanged. bin/install-
- * collector.mjs installs it; it writes one file per session here.
+ * The one channel is the statusLine command, which Claude Code invokes about every 10s even
+ * while idle. It renders whatever the command prints, so a command that prints NOTHING is a
+ * silent collector. bin/install-collector.mjs installs it; it writes one file per session.
  */
 export const claudeDir = () => join(stateDir(), "claude")
 
-const window = (raw: any, id: string, label: string, minutes: number): QuotaWindow | null => {
-  if (!raw || typeof raw !== "object") return null
-  const pct = typeof raw.used_percentage === "number" ? raw.used_percentage
-    : typeof raw.utilization === "number" ? raw.utilization
-    : null
-  if (pct === null) return null
-  return {
-    id, label, percent: pct, windowMinutes: minutes,
-    resetsAt: typeof raw.resets_at === "number" ? raw.resets_at : null,
-    active: true,
-  }
-}
+const WINDOWS: Array<{ key: string; label: string; minutes: number }> = [
+  { key: "five_hour", label: "5h", minutes: 300 },
+  { key: "seven_day", label: "7d", minutes: 10080 },
+]
+
+const pct = (raw: any): number | null =>
+  typeof raw?.used_percentage === "number" ? raw.used_percentage
+  : typeof raw?.utilization === "number" ? raw.utilization
+  : null
 
 /**
- * The collector writes one file per Claude session, but quota belongs to the account, so
- * the most recently collected file is the current reading whichever pane is in front.
+ * Reconcile the same window as reported by several concurrent sessions.
+ *
+ * Every live session writes its own file, and each carries the rate_limits from *its own*
+ * last API response — so an idle session holds a staler figure than a busy one, and a session
+ * that has not made its first call carries none at all. Picking the most recently written
+ * file therefore made the panel oscillate (0% / 2% / 3% between frames) and blank whenever a
+ * fresh session's write happened to land last. File recency is not data recency.
+ *
+ * Two facts make the reconciliation exact rather than a heuristic:
+ *
+ *   Usage within a window only rises, so of two observations of the same window the larger is
+ *   necessarily the later one. Taking the maximum yields the most recent truth no matter which
+ *   session observed it or when its file was written.
+ *
+ *   A window is identified by its reset time. When a window rolls over, resets_at changes, so
+ *   restricting to the newest resets_at drops every observation of the previous window instead
+ *   of letting yesterday's high-water mark bleed into today.
+ *
+ * Sessions missing the window contribute nothing rather than dragging the reading to zero.
  */
-async function newestPayload(): Promise<any | null> {
+export function reconcile(payloads: any[]): QuotaWindow[] {
+  const out: QuotaWindow[] = []
+  for (const { key, label, minutes } of WINDOWS) {
+    const seen = payloads
+      .map((p) => p?.rate_limits?.[key])
+      .filter((w) => w && pct(w) !== null)
+    if (!seen.length) continue
+
+    const resetsAt = Math.max(...seen.map((w) => (typeof w.resets_at === "number" ? w.resets_at : 0)))
+    const current = seen.filter(
+      (w) => (typeof w.resets_at === "number" ? w.resets_at : 0) === resetsAt,
+    )
+    out.push({
+      id: key,
+      label,
+      percent: Math.max(...current.map((w) => pct(w)!)),
+      resetsAt: resetsAt || null,
+      windowMinutes: minutes,
+      active: true,
+    })
+  }
+  return out
+}
+
+async function payloads(): Promise<any[]> {
   const dir = claudeDir()
   const names = (await readdir(dir).catch(() => [])).filter((n) => n.endsWith(".json"))
-  let best: any = null
-  for (const name of names) {
-    const text = await readFile(join(dir, name), "utf8").catch(() => null)
-    if (!text) continue
-    let rec: any
-    try { rec = JSON.parse(text) } catch { continue }
-    if (!best || (rec._collected_at ?? 0) > (best._collected_at ?? 0)) best = rec
-  }
-  return best
+  const read = await Promise.all(
+    names.map(async (n) => {
+      const text = await readFile(join(dir, n), "utf8").catch(() => null)
+      if (!text) return null
+      try { return JSON.parse(text) } catch { return null }
+    }),
+  )
+  return read.filter(Boolean)
 }
 
 export async function readClaude(): Promise<QuotaSnapshot | null> {
-  const rec = await newestPayload()
-  if (!rec) return null
+  const all = await payloads()
+  if (!all.length) return null
 
-  const rl = rec.rate_limits
-  // rate_limits is absent until a session's first API response. That is a real state the UI
-  // must distinguish from "no session" — hence an empty windows array rather than null.
-  const windows = rl
-    ? [window(rl.five_hour, "five_hour", "5h", 300), window(rl.seven_day, "seven_day", "7d", 10080)]
-        .filter((w): w is QuotaWindow => w !== null)
-    : []
-
+  const windows = reconcile(all)
+  // An empty result is a real state — every session is new and none has had an API response
+  // yet — and is distinct from "no sessions at all", which returns null above.
   return {
     agent: "claude",
-    sessionId: typeof rec.session_id === "string" ? rec.session_id : null,
-    // The statusLine payload carries no plan field — only the model, which is not quota
-    // information and must not be shown as one. If a plan label is ever wanted it comes
-    // from `claude auth status --json` (subscriptionType) or ~/.claude.json
-    // (oauthAccount.organizationRateLimitTier, which keeps the "20x" detail).
+    sessionId: null,
+    // The statusLine payload carries no plan field, only the model, which is not quota
+    // information and must not be shown as one. A plan label would come from
+    // `claude auth status --json` or ~/.claude.json's oauthAccount.organizationRateLimitTier.
     plan: null,
     windows,
     credits: null,
-    observedAt: typeof rec._collected_at === "number" ? rec._collected_at : Date.now(),
+    observedAt: Math.max(...all.map((p) => (typeof p._collected_at === "number" ? p._collected_at : 0))),
     source: "statusline",
   }
 }

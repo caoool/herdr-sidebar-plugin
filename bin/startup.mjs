@@ -11,7 +11,7 @@
  *     reports Claude quota — no hook payload carries rate_limits, and the cached copy in
  *     ~/.claude.json does not refresh with ordinary session activity.
  */
-import { readdir, unlink } from "node:fs/promises"
+import { readdir, unlink, stat } from "node:fs/promises"
 import { join } from "node:path"
 import { ensureCollector } from "./install-collector.mjs"
 
@@ -20,6 +20,17 @@ if (!state) process.exit(0)
 
 for (const f of await readdir(join(state, "panes")).catch(() => [])) {
   await unlink(join(state, "panes", f)).catch(() => {})
+}
+
+// The collector writes one file per Claude session and nothing ever removes them. Reconciling
+// by reset time already ignores stale ones, so this is only about keeping the directory
+// bounded; a week is far longer than the longest window we read.
+const WEEK = 7 * 24 * 60 * 60 * 1000
+const claude = join(state, "claude")
+for (const f of await readdir(claude).catch(() => [])) {
+  const p = join(claude, f)
+  const info = await stat(p).catch(() => null)
+  if (info && Date.now() - info.mtimeMs > WEEK) await unlink(p).catch(() => {})
 }
 
 // Never let a settings problem stop the sidebar from coming up.

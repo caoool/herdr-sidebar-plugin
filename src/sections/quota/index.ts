@@ -13,6 +13,23 @@ import { readGrok, GROK_LOG } from "./sources/grok.js"
 const ORDER: ProviderKind[] = ["claude", "codex", "grok"]
 
 /**
+ * Prefer a reading with figures over one without.
+ *
+ * A source can momentarily come back empty — a log rotating, a directory read losing a race,
+ * a request timing out — and replacing a good reading with that produced a visible blank.
+ * Quota changes slowly, so the last known figures are a far better answer for a few seconds
+ * than an em dash. A fresh reading always wins when it actually carries windows.
+ */
+function keepBest(
+  previous: QuotaSnapshot | null | undefined,
+  next: QuotaSnapshot | null,
+): QuotaSnapshot | null {
+  if (next && next.windows.length) return next
+  if (previous && previous.windows.length) return previous
+  return next ?? previous ?? null
+}
+
+/**
  * Subscription quota for every agent, in every pane.
  *
  * Quota belongs to an account rather than to a session, so a Claude pane shows the Codex and
@@ -40,7 +57,11 @@ export function quotaSection(): Section {
         readCodex().catch(() => null),
         readGrok().catch(() => null),
       ])
-      snapshots = { claude, codex, grok }
+      snapshots = {
+        claude: keepBest(snapshots.claude, claude),
+        codex: keepBest(snapshots.codex, codex),
+        grok: keepBest(snapshots.grok, grok),
+      }
       subject = ctx.subject
     },
 
