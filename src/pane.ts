@@ -21,10 +21,11 @@ import { execFile } from "node:child_process"
 import { TERMINAL } from "./ansi.js"
 import { autoDismiss } from "./dismiss.js"
 import { quotaSection } from "./sections/quota/index.js"
+import { sessionSection } from "./sections/session/index.js"
 import type { Section } from "./sections/types.js"
 import type { PaneAgent } from "./types.js"
 
-const SECTIONS: Section[] = [quotaSection()]
+const SECTIONS: Section[] = [quotaSection(), sessionSection()]
 
 let subject: PaneAgent | null = null
 let dirty = true

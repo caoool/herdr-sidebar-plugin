@@ -8,6 +8,7 @@ The sidebar is a stack of independent **sections**. Today there is one:
 | section | status | shows |
 |---|---|---|
 | **quota** | shipped | subscription utilisation and reset per agent |
+| **session** | shipped | what the agent in this pane is doing right now |
 | mcp | planned | connected MCP servers and their status |
 | tasks | planned | the agent's current task list |
 
@@ -115,6 +116,49 @@ Next reset: August 27, 06:45
 There is nothing metered to report on such an account: `onDemandCap` and `onDemandUsed` are
 both zero. Only a genuinely unreadable account — no billing response at all — renders without
 a figure.
+
+## The session section
+
+Strictly per-pane, unlike quota: everything here belongs to the session in front of you. With no
+agent in the tab there is nothing to describe, and the block is omitted rather than filled with
+dashes.
+
+```
+  SESSION
+  gpt-5.6-sol               high
+  on-request           workspace
+  ██████████████░░░░░░  72% 258K
+                          41 t/s
+```
+
+| | claude | codex | grok |
+|---|---|---|---|
+| model | `model.display_name` | `turn_context.model` | `summary.json` `current_model_id` |
+| effort | `effort.level` | `turn_context.effort` | `summary.json` `reasoning_effort` |
+| context | `context_window.used_percentage` + `context_window_size` | `token_count.info` + `model_context_window` | `updates.jsonl` `_meta.totalTokens` ÷ `models_cache` `context_window` |
+| speed | last response's tokens ÷ Δ`total_api_duration_ms` | Δ`total_token_usage.output_tokens` ÷ Δtimestamp | `turn_completed` `usage.outputTokens ÷ apiDurationMs` |
+| permission | a hook — see below | `turn_context.approval_policy` | `config.toml` only, machine-wide |
+| sandbox | **not available** | `turn_context.sandbox_policy.type` | `summary.json` `sandbox_profile` |
+
+Codex needs nothing installed: its rollout already records a `turn_context` per turn carrying
+model, effort, approval policy and sandbox, and `token_count` records carry cumulative output
+tokens against `model_context_window`.
+
+Claude is the awkward one. Its statusLine payload has model, effort and context, but **not**
+permission mode — the payload builder takes `permissionMode` as an argument and uses it only to
+decide which model id to report, never emitting it — and has no sandbox field at all. Permission
+mode therefore comes from a small hook on `UserPromptSubmit` and `PostToolUse`, installed
+alongside the collector and appended to any hooks you already have. It follows that the value is
+only as fresh as the session's last activity: toggling with shift+tab and then sitting still
+leaves it stale until the next prompt. Sandbox shows a dash, because nothing exposes it.
+
+Grok's permission mode is only in machine-wide config, so a session started with an overriding
+flag would be misreported; it is carried as the weaker claim it is.
+
+Claude's `total_output_tokens` is **not** cumulative — it equals `current_usage.output_tokens` in
+every session observed — so the rate divides that response's output by the increase in
+`cost.total_api_duration_ms`. The last measured rate is held while the agent is idle, since it
+remains true, and reads a dash only before any response has been seen.
 
 ## Install
 

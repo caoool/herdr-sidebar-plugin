@@ -32,19 +32,28 @@ export async function ensureCollector() {
   try { settings = JSON.parse(await readFile(SETTINGS, "utf8")) } catch { /* first run */ }
 
   const existing = settings.statusLine
-  if (typeof existing?.command === "string" && existing.command.includes("statusline-collector.sh")) {
-    // Already ours. Rewrite anyway so a reinstall at a new managed path keeps working.
-    if (existing.command.includes(root)) return "unchanged"
-  }
+  const collectorCurrent =
+    typeof existing?.command === "string" &&
+    existing.command.includes("statusline-collector.sh") &&
+    existing.command.includes(root)
 
   await mkdir(join(state, "claude"), { recursive: true })
+
+  // The mode hook is checked even when the collector is already current: a machine installed
+  // by an earlier version has the collector but not the hook, and returning early on the
+  // collector alone would leave permission mode permanently unavailable there.
+  const before = JSON.stringify(settings.hooks ?? null)
+  ensureModeHook(settings, state, join(root, "bin", "mode-hook.sh"))
+  const hooksChanged = JSON.stringify(settings.hooks ?? null) !== before
+
+  if (collectorCurrent && !hooksChanged) return "unchanged"
   await copyFile(SETTINGS, `${SETTINGS}.bak`).catch(() => {})
 
   // Only chain a command that is not already a collector, or we would nest ourselves.
   const prior = typeof existing?.command === "string" ? existing.command : ""
   const chain = prior && !prior.includes("statusline-collector.sh") ? prior : ""
 
-  settings.statusLine = {
+  if (!collectorCurrent) settings.statusLine = {
     type: "command",
     command:
       `SIDEBAR_STATE_DIR=${JSON.stringify(state)} ` +
@@ -56,7 +65,36 @@ export async function ensureCollector() {
   }
 
   await writeFile(SETTINGS, JSON.stringify(settings, null, 2) + "\n")
+  if (collectorCurrent) return "permission-mode hook added"
   return chain ? `installed, chaining ${chain}` : "installed"
+}
+
+/**
+ * Register the permission-mode hook on the events whose payloads carry it.
+ *
+ * Existing hooks are never replaced — herdr installs its own SessionStart hook here, and users
+ * have their own — so this appends to each event's list and skips an event that already has it.
+ * UserPromptSubmit and PostToolUse together cover both ways a session shows signs of life.
+ */
+function ensureModeHook(settings, state, script) {
+  const command = `SIDEBAR_STATE_DIR=${JSON.stringify(state)} bash ${JSON.stringify(script)}`
+  settings.hooks ??= {}
+  for (const event of ["UserPromptSubmit", "PostToolUse"]) {
+    const entries = (settings.hooks[event] ??= [])
+    const already = entries.some((e) =>
+      (e?.hooks ?? []).some((h) => typeof h?.command === "string" && h.command.includes("mode-hook.sh")),
+    )
+    if (already) {
+      // Rewrite ours in place so a reinstall at a new managed path keeps working.
+      for (const e of entries) {
+        for (const h of e?.hooks ?? []) {
+          if (typeof h?.command === "string" && h.command.includes("mode-hook.sh")) h.command = command
+        }
+      }
+      continue
+    }
+    entries.push({ hooks: [{ type: "command", command, timeout: 5 }] })
+  }
 }
 
 // Direct invocation via the repair action.
