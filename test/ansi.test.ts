@@ -46,13 +46,13 @@ test("styling never changes column widths", () => {
   }
 })
 
-test("the active provider name is naming text, dimmed like a row label", () => {
+test("the active provider name is naming text, greyed like a row label", () => {
   const snap: QuotaSnapshot = {
     agent: "claude", sessionId: null, plan: null, windows: [win()],
     credits: null, observedAt: Date.now(), source: "statusline",
   }
   const [heading] = block("claude", snap, 30, Date.now(), TERMINAL)
-  assert.match(heading, /^\x1b\[2mCLAUDE/)
+  assert.match(heading, /^\x1b\[38;5;250mCLAUDE/)
   assert.equal(strip(heading), "CLAUDE")
 })
 

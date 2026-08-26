@@ -102,7 +102,7 @@ test("no session means no block at all", () => {
 
 test("row labels are dimmed, values are not", () => {
   const [, , model] = sessionBlock(info, 30, TERMINAL)
-  assert.match(model, /^\x1b\[2mMODEL\x1b\[0m/)
+  assert.match(model, /^\x1b\[38;5;250mMODEL\x1b\[0m/)
   assert.ok(model.endsWith("gpt-5.6-sol | high"), "the value keeps full strength")
 })
 

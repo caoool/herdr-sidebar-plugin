@@ -18,6 +18,8 @@ const BLUE = "38;5;39"
 const ORANGE = "38;5;208"
 const RED = "38;5;203"
 const DIM = "2"
+/** A light grey: a step under the foreground, not the half-brightness of the dim attribute. */
+const LABEL = "38;5;250"
 
 /**
  * Utilisation ramp. The bands are contiguous so no value can fall between them — a
@@ -104,11 +106,16 @@ export const mark = (text: string, on: boolean): string => wrap(on ? GREEN : DIM
 /**
  * Naming text, one step back from the values.
  *
- * Uses the terminal's dim attribute rather than a fixed grey: dim is resolved against whatever
- * theme is in use, so it stays legible on a light background where a hardcoded grey would wash
- * out and on a dark one where it would glare.
+ * A light grey rather than the dim attribute. Dim renders at roughly half brightness, which
+ * pushed labels further back than intended and made them compete with the genuinely-dimmed
+ * inactive blocks; this is a single step under the foreground, enough to let the figures lead
+ * while the words stay comfortably readable.
+ *
+ * Being an absolute colour, it assumes a dark background — on a light theme it would sit close
+ * to the page. That is the trade for a controlled, small step: the dim attribute is the
+ * theme-relative option and is too strong here.
  */
-export const label = (s: string): string => wrap(DIM, s)
+export const label = (s: string): string => wrap(LABEL, s)
 
 /** The pane's own agent: bold name, full-strength ramp. */
 export const TERMINAL: Style = { bold, paint: paintPercent, paintContext, mark, label }

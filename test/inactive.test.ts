@@ -25,7 +25,7 @@ test("an inactive block dims its title and every row", () => {
 test("an active block dims only its name, leaving the figures at full strength", () => {
   // The provider name says which figures these are; the figures are what is being read.
   const lines = block("claude", snap, 30, Date.now(), TERMINAL)
-  assert.ok(lines[0].startsWith(DIM), "the provider name is naming text")
+  assert.match(lines[0], /^\x1b\[38;5;250mCLAUDE/, "the provider name is naming text")
   for (const row of lines.slice(1)) assert.ok(!row.startsWith(DIM), `row dimmed: ${row}`)
 })
 
