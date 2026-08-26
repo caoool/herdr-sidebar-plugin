@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { claudeDir } from "../../quota/sources/claude.js"
+import { permissionFromScreen, sandboxFromSettings } from "./claude-live.js"
+import { cleanModelName } from "../format.js"
 import type { SessionInfo } from "../types.js"
 
 /**
@@ -42,7 +44,7 @@ function rateFor(sessionId: string, outputTokens: number, apiMs: number): number
   return perSecond
 }
 
-export async function readClaudeSession(sessionId: string): Promise<SessionInfo | null> {
+export async function readClaudeSession(sessionId: string, paneId?: string): Promise<SessionInfo | null> {
   const text = await readFile(join(claudeDir(), `${sessionId}.json`), "utf8").catch(() => null)
   if (!text) return null
   let d: any
@@ -51,23 +53,26 @@ export async function readClaudeSession(sessionId: string): Promise<SessionInfo 
   const cw = d.context_window ?? {}
   const cost = d.cost ?? {}
 
-  // Written by the hook, which fires on tool use and prompt submission. Absent until the
-  // session does something, and stale if the user toggles mode and then sits still.
+  // The screen is the only live source — no hook fires when the mode is cycled — so it wins.
+  // The hook-written file is the fallback for when the footer is covered by a dialog.
   const modeText = await readFile(join(claudeDir(), `${sessionId}.mode.json`), "utf8").catch(() => null)
-  let permissionMode: string | null = null
+  let fromHook: string | null = null
   if (modeText) {
-    try { permissionMode = JSON.parse(modeText).permission_mode ?? null } catch { /* ignore */ }
+    try { fromHook = JSON.parse(modeText).permission_mode ?? null } catch { /* ignore */ }
   }
+  const permissionMode = (paneId ? await permissionFromScreen(paneId).catch(() => null) : null) ?? fromHook
+
+  const sandboxEnabled = await sandboxFromSettings(typeof d.cwd === "string" ? d.cwd : null).catch(() => null)
 
   return {
     agent: "claude",
     sessionId,
-    model: d.model?.display_name ?? d.model?.id ?? null,
+    model: cleanModelName(d.model?.display_name ?? d.model?.id ?? null),
     effort: d.effort?.level ?? null,
     permissionMode,
     permissionModeIsGlobal: false,
-    // No sandbox field exists in the statusLine payload or the hook payloads.
-    sandbox: null,
+    // Derived from layered settings rather than the payload, which has no sandbox field.
+    sandbox: sandboxEnabled === null ? null : sandboxEnabled ? "sandbox" : "no sandbox",
     context:
       typeof cw.context_window_size === "number" || typeof cw.used_percentage === "number"
         ? {

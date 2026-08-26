@@ -20,6 +20,20 @@ export function abbreviate(n: number): string {
 }
 
 /**
+ * Model names as the vendor labels them, minus the parenthetical asides.
+ *
+ * Claude reports "Opus 5 (1M context) (default)": the context variant and the default marker
+ * describe the account's configuration rather than which model is answering, and at sidebar
+ * widths they crowd out the name itself. Codex and Grok report bare ids, so this is a no-op
+ * for them — it strips a shape, not a vendor-specific string.
+ */
+export function cleanModelName(name: string | null): string | null {
+  if (!name) return null
+  const stripped = name.replace(/\s*\([^)]*\)/g, "").trim()
+  return stripped || name.trim()
+}
+
+/**
  * Solid-to-empty bar. Rounds rather than floors so a non-zero reading is never a blank bar.
  *
  * Always returns exactly `width` characters, including when the reading is unknown: the row's
@@ -82,6 +96,7 @@ export function sessionBlock(info: SessionInfo | null, width: number, style: Sty
   const finish = style.line ?? ((s: string) => s)
   return [
     finish(style.bold("SESSION")),
+    "",
     finish(pair(info.model, info.effort, width)),
     finish(pair(info.permissionMode, info.sandbox, width)),
     finish(contextRow(info.context?.usedPercent ?? null, info.context?.windowSize ?? null, width)),

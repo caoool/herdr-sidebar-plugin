@@ -137,20 +137,32 @@ dashes.
 | effort | `effort.level` | `turn_context.effort` | `summary.json` `reasoning_effort` |
 | context | `context_window.used_percentage` + `context_window_size` | `token_count.info` + `model_context_window` | `updates.jsonl` `_meta.totalTokens` ÷ `models_cache` `context_window` |
 | speed | last response's tokens ÷ Δ`total_api_duration_ms` | Δ`total_token_usage.output_tokens` ÷ Δtimestamp | `turn_completed` `usage.outputTokens ÷ apiDurationMs` |
-| permission | a hook — see below | `turn_context.approval_policy` | `config.toml` only, machine-wide |
-| sandbox | **not available** | `turn_context.sandbox_policy.type` | `summary.json` `sandbox_profile` |
+| permission | the pane's footer, with a hook as fallback | `turn_context.approval_policy` | `config.toml` only, machine-wide |
+| sandbox | layered settings `sandbox.enabled` | `turn_context.sandbox_policy.type` | `summary.json` `sandbox_profile` |
 
 Codex needs nothing installed: its rollout already records a `turn_context` per turn carrying
 model, effort, approval policy and sandbox, and `token_count` records carry cumulative output
 tokens against `model_context_window`.
 
-Claude is the awkward one. Its statusLine payload has model, effort and context, but **not**
-permission mode — the payload builder takes `permissionMode` as an argument and uses it only to
-decide which model id to report, never emitting it — and has no sandbox field at all. Permission
-mode therefore comes from a small hook on `UserPromptSubmit` and `PostToolUse`, installed
-alongside the collector and appended to any hooks you already have. It follows that the value is
-only as fresh as the session's last activity: toggling with shift+tab and then sitting still
-leaves it stale until the next prompt. Sandbox shows a dash, because nothing exposes it.
+Claude is the awkward one. Its statusLine payload has model, effort and context but neither
+permission mode nor sandbox — the payload builder takes `permissionMode` as an argument and uses
+it only to decide which model id to report, and the documented field list has no sandbox entry.
+
+**Permission mode** is read from the pane's own footer, because no hook fires when it is cycled:
+`ConfigChange` covers configuration *files*, and shift+tab is in-memory. A hook on
+`UserPromptSubmit` and `PostToolUse` is still installed as a fallback for when a dialog covers
+the footer, but the screen is what makes the value live. No match returns nothing rather than
+assuming "default", since an obscured footer is indistinguishable from an unset mode.
+
+**Sandbox** is derived from the same layered settings Claude itself reads — `sandbox.enabled`,
+nearest scope first, from the project's `.claude/settings.local.json` down to the user's
+`settings.json`. This is the mechanism ccstatusline's indicator uses and it carries the same
+caveat: managed policy or a CLI flag can override those files, so it describes configuration
+rather than a guaranteed live state.
+
+Model names are shown without their parenthetical asides: Claude reports
+"Opus 5 (1M context) (default)", and the context variant and default marker describe the
+account rather than which model is answering.
 
 Grok's permission mode is only in machine-wide config, so a session started with an overriding
 flag would be misreported; it is carried as the weaker claim it is.

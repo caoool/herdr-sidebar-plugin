@@ -76,9 +76,11 @@ export function quotaSection(): Section {
       const order = subject
         ? [subject.agent, ...ORDER.filter((a) => a !== subject!.agent)]
         : ORDER
-      const out: string[] = []
+      // Titled like the session section, with a blank row so the heading reads as a heading
+      // rather than as another provider.
+      const out: string[] = [style.bold("QUOTA"), ""]
       for (const agent of order) {
-        if (out.length) out.push("")
+        if (out.length > 2) out.push("")
         // With no agent in this tab there is nothing to be secondary to, so everything reads
         // at full strength rather than the whole panel receding.
         const forAgent =

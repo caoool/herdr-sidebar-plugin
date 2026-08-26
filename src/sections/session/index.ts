@@ -30,13 +30,15 @@ export function sessionSection(): Section {
     async refresh(ctx) {
       const subject = ctx.subject
       if (!subject?.sessionId) { info = null; return }
+      // Claude needs the pane as well as the session: its permission mode is only live on
+      // the pane's own screen.
       const read =
-        subject.agent === "claude" ? readClaudeSession
-        : subject.agent === "codex" ? readCodexSession
-        : readGrokSession
+        subject.agent === "claude" ? () => readClaudeSession(subject.sessionId!, subject.paneId)
+        : subject.agent === "codex" ? () => readCodexSession(subject.sessionId!)
+        : () => readGrokSession(subject.sessionId!)
       // Keep the previous reading if this one fails: the values change slowly and a blank
       // block for one refresh is worse than values a few seconds old.
-      info = (await read(subject.sessionId).catch(() => null)) ?? info
+      info = (await read().catch(() => null)) ?? info
       if (info && info.agent !== subject.agent) info = null
     },
 

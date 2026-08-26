@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { abbreviate, gauge, pair, contextRow, speedRow, sessionBlock } from "../src/sections/session/format.js"
+import { abbreviate, gauge, pair, contextRow, speedRow, sessionBlock, cleanModelName } from "../src/sections/session/format.js"
 import { PLAIN, TERMINAL } from "../src/ansi.js"
 import type { SessionInfo } from "../src/sections/session/types.js"
 
@@ -78,14 +78,27 @@ const info: SessionInfo = {
   context: { usedPercent: 70, windowSize: 258_400 }, outputPerSecond: 41, observedAt: Date.now(),
 }
 
-test("the block is exactly the four specified rows under a heading", () => {
+test("the block is a title, a blank row, then the four specified rows", () => {
   const lines = sessionBlock(info, 30, PLAIN)
-  assert.equal(lines.length, 5)
+  assert.equal(lines.length, 6)
   assert.equal(lines[0], "SESSION")
-  assert.ok(lines[1].startsWith("gpt-5.6-sol") && lines[1].endsWith("high"))
-  assert.ok(lines[2].startsWith("on-request") && lines[2].endsWith("workspace"))
-  assert.ok(lines[3].includes("█") && lines[3].endsWith("258K"))
-  assert.ok(lines[4].endsWith("41 t/s"))
+  assert.equal(lines[1], "")
+  assert.ok(lines[2].startsWith("gpt-5.6-sol") && lines[2].endsWith("high"))
+  assert.ok(lines[3].startsWith("on-request") && lines[3].endsWith("workspace"))
+  assert.ok(lines[4].includes("█") && lines[4].endsWith("258K"))
+  assert.ok(lines[5].endsWith("41 t/s"))
+})
+
+test("model names lose their parenthetical asides", () => {
+  assert.equal(cleanModelName("Opus 5 (1M context) (default)"), "Opus 5")
+  assert.equal(cleanModelName("Opus 5"), "Opus 5")
+  assert.equal(cleanModelName("gpt-5.6-sol"), "gpt-5.6-sol")
+  assert.equal(cleanModelName("grok-4.6"), "grok-4.6")
+  assert.equal(cleanModelName(null), null)
+})
+
+test("a name that is entirely parenthetical is kept rather than blanked", () => {
+  assert.equal(cleanModelName("(unknown)"), "(unknown)")
 })
 
 test("no session means no block at all, not a block of dashes", () => {
