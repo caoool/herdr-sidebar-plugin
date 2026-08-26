@@ -15,7 +15,7 @@
  * (native Zig core, node entry point), so those components do not need rewriting, only
  * remounting in this process instead of opencode's TuiPluginApi.
  */
-import { watch } from "node:fs"
+import { watch, statSync } from "node:fs"
 import { agentsInTab, herdrBin, listAgents, resolveSubject, selfPaneId, selfTabId } from "./herdr.js"
 import { execFile } from "node:child_process"
 import { TERMINAL } from "./ansi.js"
@@ -29,6 +29,17 @@ const SECTIONS: Section[] = [quotaSection()]
 let subject: PaneAgent | null = null
 let dirty = true
 
+/**
+ * Exit code asking bin/pane.sh to relaunch us. See that file for why this exists: herdr never
+ * relaunches a pane, so without it a sidebar opened before an upgrade runs the old code for
+ * as long as it stays open.
+ */
+const RESTART = 75
+const buildStamp = (): number => {
+  try { return statSync(process.argv[1]).mtimeMs } catch { return 0 }
+}
+const startedWith = buildStamp()
+
 /** Opens with an agent, so it leaves with one. See src/dismiss.ts for why this is polled. */
 const dismisser = autoDismiss(process.env.HERDR_SIDEBAR_AUTO_CLOSE !== "0", 12_000)
 
@@ -41,6 +52,10 @@ function dismiss() {
 }
 
 async function refresh() {
+  // A reinstall rewrites the bundle underneath us; restart so the new code takes over.
+  const stamp = buildStamp()
+  if (startedWith && stamp && stamp !== startedWith) process.exit(RESTART)
+
   const agents = await listAgents().catch(() => [])
   const now = Date.now()
   dismisser.note(agentsInTab(agents, selfTabId()).length > 0, now)

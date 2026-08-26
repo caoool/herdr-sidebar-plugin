@@ -23,7 +23,7 @@ command = ["node", "bin/startup.mjs"]
 id = "sidebar"
 title = "quota"
 placement = "split"
-command = ["node", "dist/pane.js"]
+command = ["bash", "bin/pane.sh"]
 
 [[actions]]
 id = "toggle"

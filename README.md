@@ -126,6 +126,12 @@ herdr clones the repo, runs the build, and registers it. There is no `plugin upd
 reinstall to pick up a new commit. npm is not an install path: `herdr plugin install` accepts
 GitHub shorthand only.
 
+Sidebars already open pick the new build up on their own. herdr launches a pane once and never
+relaunches it, so a reinstall would otherwise replace the bundle on disk while every open
+sidebar carried on running the code it started with — indefinitely, and with no sign that
+anything was stale. The pane notices its own bundle has changed and restarts in place, keeping
+its tab position and width.
+
 That is all — there is nothing to invoke by hand. The plugin installs the Claude statusLine
 collector itself, on the first agent detection and again on every server start. It is the
 only user setting this plugin writes, it backs up `settings.json` first, and it is idempotent.
