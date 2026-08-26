@@ -51,6 +51,11 @@ after install. Grok is the one agent that will not give its figure away for free
   7d     —                 1D
 ```
 
+The agent running in this pane leads and renders at full strength — bold name, full-intensity
+ramp. Every other agent's block recedes: the name loses its weight and its rows are dimmed,
+keeping the band hue at reduced intensity. Their figures are still worth showing, since quota
+is account-wide, but they are not what this pane is spending.
+
 Reset renders as days remaining for a window of a day or more, and as a 24h clock time
 otherwise — chosen from the reported window *duration*, not its label, because Codex changes
 that duration server-side without notice. Percentages colour green ≤30, blue ≤60, orange ≤80,

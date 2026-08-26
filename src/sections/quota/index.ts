@@ -1,7 +1,7 @@
 import { join } from "node:path"
 import { homedir } from "node:os"
 import { stateDir } from "../../herdr.js"
-import type { Style } from "../../ansi.js"
+import { TERMINAL, TERMINAL_INACTIVE, type Style } from "../../ansi.js"
 import type { ProviderKind } from "../../types.js"
 import type { Section, SectionContext } from "../types.js"
 import type { QuotaSnapshot } from "./types.js"
@@ -72,7 +72,11 @@ export function quotaSection(): Section {
       const out: string[] = []
       for (const agent of order) {
         if (out.length) out.push("")
-        out.push(...block(agent, snapshots[agent] ?? null, width, Date.now(), style))
+        // With no agent in this tab there is nothing to be secondary to, so everything reads
+        // at full strength rather than the whole panel receding.
+        const forAgent =
+          style === TERMINAL && subject && agent !== subject.agent ? TERMINAL_INACTIVE : style
+        out.push(...block(agent, snapshots[agent] ?? null, width, Date.now(), forAgent))
       }
       return out
     },

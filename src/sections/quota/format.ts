@@ -95,11 +95,15 @@ export function block(
   style: Style = { bold: (s) => s, paint: (t) => t },
 ): string[] {
   const name = DISPLAY[agent]
-  const heading = style.bold(name)
+  const finish = style.line ?? ((s: string) => s)
   if (!snap || snap.windows.length === 0) {
     // Gap measured from the plain name, for the same reason as in row().
-    return [heading + " ".repeat(Math.max(1, width - name.length - 1)) + "\u2014"]
+    const empty = style.bold(name) + " ".repeat(Math.max(1, width - name.length - 1)) + "\u2014"
+    return [finish(empty)]
   }
-  return [heading, ...snap.windows.map((w) => row(w, width, now, style.paint))]
+  return [
+    finish(style.bold(name)),
+    ...snap.windows.map((w) => finish(row(w, width, now, style.paint))),
+  ]
 }
 

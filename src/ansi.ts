@@ -43,11 +43,40 @@ export function percentStyle(percent: number | null): string {
 export const paintPercent = (text: string, percent: number | null): string =>
   wrap(percentStyle(percent), text)
 
+/**
+ * Dim + colour, then re-assert dim.
+ *
+ * An inactive block is dimmed as a whole, but the percentage still needs its band colour so
+ * the ramp stays readable. The usual reset at the end of a painted span would cancel the
+ * surrounding dim for the remainder of the line, so dim is turned back on immediately after.
+ */
+const paintPercentInactive = (text: string, percent: number | null): string => {
+  if (!enabled()) return text
+  const colour = percentStyle(percent)
+  const code = colour === DIM ? DIM : `${DIM};${colour}`
+  return `${ESC}${code}m${text}${ESC}0m${ESC}${DIM}m`
+}
+
 /** Injected rather than imported directly so tests can render unstyled and assert layout. */
 export type Style = {
   bold: (s: string) => string
   paint: (text: string, percent: number | null) => string
+  /** Applied to each finished line. Used to dim a whole block at once. */
+  line?: (s: string) => string
 }
 
 export const PLAIN: Style = { bold: (s) => s, paint: (t) => t }
+
+/** The pane's own agent: bold name, full-strength ramp. */
 export const TERMINAL: Style = { bold, paint: paintPercent }
+
+/**
+ * Every other agent. Their figures are still worth showing — quota is account-wide — but they
+ * are not what this pane is spending, so the whole block recedes: the name loses its weight
+ * and the ramp keeps its hue at reduced intensity.
+ */
+export const TERMINAL_INACTIVE: Style = {
+  bold: (s) => s,
+  paint: paintPercentInactive,
+  line: (s) => wrap(DIM, s),
+}
