@@ -44,7 +44,7 @@ export async function readClaudeSession(sessionId: string, paneId?: string): Pro
     permissionMode,
     permissionModeIsGlobal: false,
     // Derived from layered settings rather than the payload, which has no sandbox field.
-    sandbox: sandboxEnabled === null ? null : sandboxEnabled ? "sandbox" : "no sandbox",
+    sandboxEnabled,
     context:
       typeof cw.context_window_size === "number" || typeof cw.used_percentage === "number"
         ? {

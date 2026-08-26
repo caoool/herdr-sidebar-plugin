@@ -2,22 +2,12 @@ import type { Style } from "../../ansi.js"
 import type { SessionInfo } from "./types.js"
 
 const DASH = "—"
+const SEP = " | "
 
-/** Widest the reset/size column may be, so the gauge gets everything left over. */
-const GAUGE_MIN = 8
-
-/**
- * Token counts are read at a glance, not audited, so they are abbreviated. 258400 -> "258K",
- * 1000000 -> "1M": a trailing ".0" carries no information and costs a column the gauge wants.
- */
-export function abbreviate(n: number): string {
-  if (n >= 1_000_000) {
-    const m = n / 1_000_000
-    return `${m >= 10 || Number.isInteger(m) ? Math.round(m) : m.toFixed(1)}M`
-  }
-  if (n >= 1_000) return `${Math.round(n / 1_000)}K`
-  return String(n)
-}
+/** Lit and unlit sandbox indicators. The glyph differs as well as the colour, so the state */
+/** survives a terminal with colour disabled, where two coloured dots would look identical. */
+const ON = "●"
+const OFF = "○"
 
 /**
  * Model names as the vendor labels them, minus the parenthetical asides.
@@ -34,72 +24,75 @@ export function cleanModelName(name: string | null): string | null {
 }
 
 /**
- * Solid-to-empty bar. Rounds rather than floors so a non-zero reading is never a blank bar.
- *
- * Always returns exactly `width` characters, including when the reading is unknown: the row's
- * right-hand label is positioned from this length, and a short gauge pulled the whole line out
- * of alignment. Unknown is drawn as a few dashes rather than an empty track, which would read
- * as zero.
+ * Token counts are read at a glance, not audited, so they are abbreviated. 258400 -> "258K",
+ * 1000000 -> "1M": a trailing ".0" carries no information and costs a column.
  */
-export function gauge(percent: number | null, width: number): string {
-  if (percent === null) return DASH.repeat(Math.min(width, 3)).padEnd(width)
-  const clamped = Math.max(0, Math.min(100, percent))
-  const filled = Math.min(width, Math.max(clamped > 0 ? 1 : 0, Math.round((clamped / 100) * width)))
-  return "█".repeat(filled) + "░".repeat(width - filled)
+export function abbreviate(n: number): string {
+  if (n >= 1_000_000) {
+    const m = n / 1_000_000
+    return `${m >= 10 || Number.isInteger(m) ? Math.round(m) : m.toFixed(1)}M`
+  }
+  if (n >= 1_000) return `${Math.round(n / 1_000)}K`
+  return String(n)
 }
 
 /**
- * Two values on one line, one flush left and one flush right.
- *
- * Both may be missing, and an em dash is used rather than an empty cell so the row keeps its
- * shape and the reader can see that the field exists but is unknown.
+ * A piece of a row's value. `paint` is applied for display only — every width is measured from
+ * `text`, because escape sequences occupy no columns and measuring the painted string would
+ * push each row out of alignment.
  */
-export function pair(left: string | null, right: string | null, width: number): string {
-  const l = left ?? DASH
-  const r = right ?? DASH
-  const gap = Math.max(1, width - l.length - r.length)
-  return l + " ".repeat(gap) + r
+export type Segment = { text: string; paint?: (s: string) => string }
+
+/** A fixed label on the left, the value flush right. */
+export function labelled(label: string, segments: Segment[], width: number): string {
+  const plain = segments.map((s) => s.text).join("")
+  const gap = Math.max(1, width - label.length - plain.length)
+  const painted = segments.map((s) => (s.paint ? s.paint(s.text) : s.text)).join("")
+  return label + " ".repeat(gap) + painted
+}
+
+/** Joins the halves of a two-part value, collapsing to a dash when neither half is known. */
+function twoPart(left: string | null, right: string | null, paintLeft?: (s: string) => string): Segment[] {
+  if (left === null && right === null) return [{ text: DASH }]
+  if (right === null) return [{ text: left!, paint: paintLeft }]
+  if (left === null) return [{ text: DASH, paint: paintLeft }, { text: SEP }, { text: right }]
+  return [{ text: left, paint: paintLeft }, { text: SEP }, { text: right }]
 }
 
 /**
- * The context row: a gauge, then the percentage and the window it is measured against.
+ * The section: a labelled row per fact, no gauge.
  *
- *   ████████████░░░░  70% 258K
- *
- * The window size is worth the columns it costs: 70% of a 258K window and 70% of a 1M window
- * are very different amounts of remaining room, and the percentage alone hides that.
- */
-export function contextRow(
-  usedPercent: number | null,
-  windowSize: number | null,
-  width: number,
-): string {
-  const pct = usedPercent === null ? DASH : `${Math.round(usedPercent)}%`
-  const size = windowSize === null ? "" : ` ${abbreviate(windowSize)}`
-  const label = `${pct.padStart(4)}${size}`
-  const bar = Math.max(GAUGE_MIN, width - label.length - 1)
-  return `${gauge(usedPercent, bar)} ${label}`
-}
-
-/** Rate row, right-aligned to sit under the context label rather than float mid-line. */
-export function speedRow(perSecond: number | null, width: number): string {
-  const text = perSecond === null ? `${DASH} t/s` : `${Math.round(perSecond)} t/s`
-  return text.padStart(width)
-}
-
-/**
- * The section. Renders only for the agent in this pane, so there is no dimmed variant — an
- * empty result means there is no session to describe and the pane omits the block entirely.
+ * The context percentage carries the same colour ramp as quota — both answer "how much of a
+ * budget is gone", so a reader who has learned the ramp in one place reads it in the other
+ * without relearning.
  */
 export function sessionBlock(info: SessionInfo | null, width: number, style: Style): string[] {
   if (!info) return []
   const finish = style.line ?? ((s: string) => s)
+  const mark = style.mark ?? ((t: string) => t)
+
+  const context = info.context
+  const percent = context?.usedPercent ?? null
+  const contextSegments = twoPart(
+    percent === null ? null : `${Math.round(percent)}%`,
+    context?.windowSize == null ? null : abbreviate(context.windowSize),
+    (t) => style.paint(t, percent),
+  )
+
+  // The sandbox state is a lit or unlit dot rather than a policy name: the policies differ per
+  // agent — a Codex sandbox_policy, a Grok profile, a Claude boolean — and only the on/off
+  // distinction is common to all three and meaningful at this width.
+  const sandbox: Segment =
+    info.sandboxEnabled === null
+      ? { text: DASH }
+      : { text: info.sandboxEnabled ? ON : OFF, paint: (t) => mark(t, info.sandboxEnabled === true) }
+
   return [
     finish(style.bold("SESSION")),
     "",
-    finish(pair(info.model, info.effort, width)),
-    finish(pair(info.permissionMode, info.sandbox, width)),
-    finish(contextRow(info.context?.usedPercent ?? null, info.context?.windowSize ?? null, width)),
-    finish(speedRow(info.outputPerSecond, width)),
+    finish(labelled("Model", twoPart(info.model, info.effort), width)),
+    finish(labelled("Mode", [{ text: "SB " }, sandbox, { text: " " }, { text: info.permissionMode ?? DASH }], width)),
+    finish(labelled("Context", contextSegments, width)),
+    finish(labelled("Speed", [{ text: info.outputPerSecond === null ? `${DASH} t/s` : `${Math.round(info.outputPerSecond)} t/s` }], width)),
   ]
 }

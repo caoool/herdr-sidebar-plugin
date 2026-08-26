@@ -63,12 +63,20 @@ export type Style = {
   paint: (text: string, percent: number | null) => string
   /** Applied to each finished line. Used to dim a whole block at once. */
   line?: (s: string) => string
+  /** A two-state indicator: on reads as good, off as inert. */
+  mark?: (text: string, on: boolean) => string
 }
 
 export const PLAIN: Style = { bold: (s) => s, paint: (t) => t }
 
+/**
+ * A lit indicator versus an unlit one. Colour and glyph both change, so the state survives a
+ * terminal with colour disabled, where two differently-coloured dots would look identical.
+ */
+export const mark = (text: string, on: boolean): string => wrap(on ? GREEN : DIM, text)
+
 /** The pane's own agent: bold name, full-strength ramp. */
-export const TERMINAL: Style = { bold, paint: paintPercent }
+export const TERMINAL: Style = { bold, paint: paintPercent, mark }
 
 /**
  * Every other agent. Their figures are still worth showing — quota is account-wide — but they

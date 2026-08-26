@@ -34,13 +34,15 @@ async function rolloutFor(sessionId: string): Promise<string | null> {
   return best?.path ?? null
 }
 
-/** "workspace-write" plus no network is the interesting distinction, so both are shown. */
-function sandboxLabel(policy: any): string | null {
+/**
+ * Codex names a policy rather than a flag. Every policy constrains the agent except
+ * `danger-full-access`, which is the one that explicitly does not — so that is the only value
+ * reported as unsandboxed.
+ */
+function sandboxEnabledFrom(policy: any): boolean | null {
   const kind = policy?.type ?? policy?.kind
   if (typeof kind !== "string") return null
-  if (kind === "danger-full-access") return "full-access"
-  if (policy?.network_access === false && kind === "workspace-write") return "workspace"
-  return kind
+  return kind !== "danger-full-access"
 }
 
 export async function readCodexSession(sessionId: string): Promise<SessionInfo | null> {
@@ -95,7 +97,7 @@ export async function readCodexSession(sessionId: string): Promise<SessionInfo |
     effort: typeof turn?.effort === "string" ? turn.effort : null,
     permissionMode: typeof turn?.approval_policy === "string" ? turn.approval_policy : null,
     permissionModeIsGlobal: false,
-    sandbox: sandboxLabel(turn?.sandbox_policy),
+    sandboxEnabled: sandboxEnabledFrom(turn?.sandbox_policy),
     context: windowSize || usedPercent !== null ? { usedPercent, windowSize } : null,
     outputPerSecond,
     observedAt: latest?.at || Date.now(),

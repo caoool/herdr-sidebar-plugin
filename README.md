@@ -125,11 +125,22 @@ dashes.
 
 ```
   SESSION
-  gpt-5.6-sol               high
-  on-request           workspace
-  ██████████████░░░░░░  72% 258K
-                          41 t/s
+
+  Model      gpt-5.6-sol | high
+  Mode           SB ● on-request
+  Context             72% | 258K
+  Speed                   41 t/s
 ```
+
+The context percentage carries the same colour ramp as quota, since both answer "how much of a
+budget is gone" — a reader who has learned the ramp in one place reads it in the other without
+relearning. `SB` is a lit dot when the agent is sandboxed and an unlit one when it is not; the
+glyph changes as well as the colour, so the state survives a terminal with colour disabled.
+
+The agents describe sandboxing differently — a Codex `sandbox_policy`, a Grok profile name, a
+Claude boolean — so only on/off is shown, which is the one distinction common to all three. For
+Codex every policy constrains the agent except `danger-full-access`; for Grok every profile
+except `off`.
 
 | | claude | codex | grok |
 |---|---|---|---|

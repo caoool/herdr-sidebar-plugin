@@ -94,7 +94,11 @@ export async function readGrokSession(sessionId: string): Promise<SessionInfo | 
     effort: typeof summary.reasoning_effort === "string" ? summary.reasoning_effort : null,
     permissionMode,
     permissionModeIsGlobal: true,
-    sandbox: typeof summary.sandbox_profile === "string" ? summary.sandbox_profile : null,
+    // Grok names a profile; "off" is the only one that means unsandboxed.
+    sandboxEnabled:
+      typeof summary.sandbox_profile === "string"
+        ? summary.sandbox_profile.toLowerCase() !== "off"
+        : null,
     context:
       windowSize || totalTokens !== null
         ? {

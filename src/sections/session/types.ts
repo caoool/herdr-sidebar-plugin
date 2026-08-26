@@ -16,7 +16,12 @@ export type SessionInfo = {
   permissionMode: string | null
   /** True when permissionMode came from machine-wide config rather than the running session. */
   permissionModeIsGlobal: boolean
-  sandbox: string | null
+  /**
+   * Whether the agent is sandboxed at all. The agents describe sandboxing differently — a
+   * Codex sandbox_policy, a Grok profile name, a Claude boolean — and only on/off is common
+   * to all three, so the distinction each one draws internally is deliberately flattened here.
+   */
+  sandboxEnabled: boolean | null
   context: ContextUsage | null
   /** Output tokens per second of the most recent response, or null until one is observed. */
   outputPerSecond: number | null
