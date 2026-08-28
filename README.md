@@ -8,8 +8,7 @@ The sidebar is a stack of independent **sections**. Today there is one:
 | section | status | shows |
 |---|---|---|
 | **quota** | shipped | subscription utilisation and reset per agent |
-| **session** | shipped | what the agent in this pane is doing right now |
-| **project** | shipped | the workspace, its branch and divergence, its worktree |
+| **session** | shipped | what the agent in this pane is doing, and where |
 | mcp | planned | connected MCP servers and their status |
 | tasks | planned | the agent's current task list |
 
@@ -125,14 +124,21 @@ agent in the tab there is nothing to describe, and the block is omitted rather t
 dashes.
 
 ```
-  SESSION
+  SESSION   Refactor the parser
 
-  NAME        Refactor the parser
   MODEL      gpt-5.6-sol | high
   MODE              ● on-request
   CONTEXT             72% | 258K
   SPEED                   41 t/s
+
+  WORKSPACE          my-project
+  BRANCH                   main
+  WORKTREE            feature-x
+  DIFF                    ↑2 ↓1
 ```
+
+The session's name rides the heading rather than taking a row: it names the block, which is what
+a heading is for, and every row below is a fact about it.
 
 The context percentage uses the same ramp as quota, shifted: red starts at 90 rather than 80. A
 context window and a quota window are not equally urgent at the same reading — quota at 80%
@@ -209,29 +215,17 @@ it is meaningless, and dividing one response's tokens by the increase in
 `cost.total_api_duration_ms` understates by roughly the number of API calls in the sampling
 interval, which in a tool loop is several.
 
-## The project section
+The last four rows describe where the pane is working. The workspace name and cwd come from the
+context herdr injects at launch, so naming the project costs nothing; only the git facts are
+asked for. herdr computes the same facts for its own sidebar rows but exposes them only for
+worktree-backed workspaces — `workspace.get` carries no branch — so this asks git directly: two
+invocations, the first batching three rev-parse queries, cached for fifteen seconds because git
+state changes at human speed while the pane repaints every five.
 
-Where the work is happening. The workspace name and cwd come from the context herdr injects when
-it launches the pane, so naming the project costs nothing; only the git facts are asked for.
-
-```
-  PROJECT
-
-  herdr-sidebar-plugin
-  main                    ↑2 ↓1
-  feature-x
-```
-
-Divergence reads like herdr's own, and is omitted when there is none: a branch level with its
-upstream has nothing to report, and printing `↑0 ↓0` would make the ordinary case the loudest
-thing on the row. A branch with no upstream shows no divergence either. The worktree row appears
-only for a linked worktree — detected by git's own directory layout, where a linked checkout
-keeps its git dir under `<common>/worktrees/<name>` — since the main checkout has nothing to add.
-
-herdr computes the same facts for its own sidebar rows but exposes them only for worktree-backed
-workspaces (`workspace.get` carries no branch), so this asks git directly: two invocations, the
-first batching three rev-parse queries, cached for fifteen seconds because git state changes at
-human speed while the pane repaints every five.
+`DIFF` is divergence from upstream in herdr's own shape, and reads as a dash when there is none:
+printing `↑0 ↓0` would make the ordinary case the loudest thing on the row. A linked worktree is
+identified by git's own layout, where a linked checkout keeps its git dir under
+`<common>/worktrees/<name>`.
 
 ## Install
 

@@ -1,5 +1,5 @@
 import type { Style } from "../../ansi.js"
-import type { SessionInfo } from "./types.js"
+import type { ProjectInfo, SessionInfo } from "./types.js"
 
 const DASH = "—"
 const SEP = " | "
@@ -75,45 +75,85 @@ function twoPart(left: string | null, right: string | null, paintLeft?: (s: stri
 }
 
 /**
+ * Ahead and behind, in herdr's own shape.
+ *
+ * Zero counts are omitted rather than shown as "↑0": a branch level with its upstream has
+ * nothing to report, and printing zeros would make the common case the loudest one. A branch
+ * with no upstream has no divergence to describe at all.
+ */
+export function divergence(ahead: number | null, behind: number | null): string {
+  const parts: string[] = []
+  if (ahead) parts.push(`↑${ahead}`)
+  if (behind) parts.push(`↓${behind}`)
+  return parts.join(" ")
+}
+
+/**
  * The section: a labelled row per fact, no gauge.
  *
  * The context percentage carries the same colour ramp as quota — both answer "how much of a
  * budget is gone", so a reader who has learned the ramp in one place reads it in the other
  * without relearning.
  */
-export function sessionBlock(info: SessionInfo | null, width: number, style: Style): string[] {
-  if (!info) return []
+export function sessionBlock(
+  info: SessionInfo | null,
+  project: ProjectInfo | null,
+  width: number,
+  style: Style,
+): string[] {
+  if (!info && !project) return []
   const finish = style.line ?? ((s: string) => s)
   const mark = style.mark ?? ((t: string) => t)
   const asLabel = style.label ?? ((t: string) => t)
 
-  const context = info.context
-  const percent = context?.usedPercent ?? null
-  const contextSegments = twoPart(
-    percent === null ? null : `${Math.round(percent)}%`,
-    context?.windowSize == null ? null : abbreviate(context.windowSize),
-    (t) => (style.paintContext ?? style.paint)(t, percent),
-  )
+  const rowFor = (label: string, segments: Segment[]) =>
+    finish(labelled(label, segments, width, asLabel))
+  /** A value column of roughly this much, once the label and its gap are taken. */
+  const valueWidth = Math.max(8, width - 10)
+  const text = (v: string | null): Segment[] => [{ text: v ? truncate(v, valueWidth) : DASH }]
 
-  // The sandbox state is a lit or unlit dot rather than a policy name: the policies differ per
-  // agent — a Codex sandbox_policy, a Grok profile, a Claude boolean — and only the on/off
-  // distinction is common to all three and meaningful at this width.
-  const sandbox: Segment =
-    info.sandboxEnabled === null
-      ? { text: DASH }
-      : { text: info.sandboxEnabled ? ON : OFF, paint: (t) => mark(t, info.sandboxEnabled === true) }
+  const rows: string[] = []
 
-  const nameRow = info.name
-    ? [finish(labelled("NAME", [{ text: truncate(info.name, Math.max(8, width - 6)), paint: style.bold }], width, asLabel))]
-    : []
+  if (info) {
+    rows.push(rowFor("MODEL", twoPart(info.model, info.effort)))
 
-  return [
-    finish(style.bold("SESSION")),
-    "",
-    ...nameRow,
-    finish(labelled("MODEL", twoPart(info.model, info.effort), width, asLabel)),
-    finish(labelled("MODE", [sandbox, { text: " " }, { text: info.permissionMode ?? DASH }], width, asLabel)),
-    finish(labelled("CONTEXT", contextSegments, width, asLabel)),
-    finish(labelled("SPEED", [{ text: info.outputPerSecond === null ? `${DASH} t/s` : `${Math.round(info.outputPerSecond)} t/s` }], width, asLabel)),
-  ]
+    // The sandbox state is a lit or unlit dot rather than a policy name: the policies differ
+    // per agent — a Codex sandbox_policy, a Grok profile, a Claude boolean — and only the
+    // on/off distinction is common to all three and meaningful at this width.
+    const sandbox: Segment =
+      info.sandboxEnabled === null
+        ? { text: DASH }
+        : { text: info.sandboxEnabled ? ON : OFF, paint: (t) => mark(t, info.sandboxEnabled === true) }
+    rows.push(rowFor("MODE", [sandbox, { text: " " }, { text: info.permissionMode ?? DASH }]))
+
+    const percent = info.context?.usedPercent ?? null
+    rows.push(rowFor("CONTEXT", twoPart(
+      percent === null ? null : `${Math.round(percent)}%`,
+      info.context?.windowSize == null ? null : abbreviate(info.context.windowSize),
+      (t) => (style.paintContext ?? style.paint)(t, percent),
+    )))
+
+    rows.push(rowFor("SPEED", [
+      { text: info.outputPerSecond === null ? `${DASH} t/s` : `${Math.round(info.outputPerSecond)} t/s` },
+    ]))
+  }
+
+  if (project) {
+    // A blank line rather than a second heading: these describe the same pane, and a reader
+    // scanning labels does not need to be told the list continues.
+    if (rows.length) rows.push("")
+    rows.push(rowFor("WORKSPACE", text(project.workspace)))
+    rows.push(rowFor("BRANCH", text(project.branch)))
+    rows.push(rowFor("WORKTREE", text(project.worktree)))
+    rows.push(rowFor("DIFF", text(project.diff || null)))
+  }
+
+  // The session's name rides the heading rather than taking a row of its own: it names the
+  // block, which is what a heading is for, and the rows below are all facts about it.
+  const heading = info?.name
+    ? labelled("SESSION", [{ text: truncate(info.name, Math.max(8, width - 9)), paint: style.bold }],
+        width, style.bold)
+    : style.bold("SESSION")
+
+  return [finish(heading), "", ...rows]
 }

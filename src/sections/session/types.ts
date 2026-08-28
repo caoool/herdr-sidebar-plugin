@@ -36,3 +36,16 @@ export type ContextUsage = {
   /** Total context window in tokens, for the "of 258K" half of the label. */
   windowSize: number | null
 }
+
+/**
+ * Where the pane is working. Not a property of the agent — the same checkout is described the
+ * same way whichever agent occupies the pane — so it is carried beside SessionInfo rather than
+ * inside it, and survives the agent's reading being unavailable.
+ */
+export type ProjectInfo = {
+  workspace: string | null
+  branch: string | null
+  worktree: string | null
+  /** Divergence from upstream, already rendered: "↑2 ↓1", or empty when there is none. */
+  diff: string
+}
