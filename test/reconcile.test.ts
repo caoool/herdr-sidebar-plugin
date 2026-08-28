@@ -56,3 +56,12 @@ test("window durations are carried so the reset formats correctly", () => {
   assert.equal(w.find((x) => x.id === "five_hour")?.windowMinutes, 300)
   assert.equal(w.find((x) => x.id === "seven_day")?.windowMinutes, 10080)
 })
+
+test("sibling state files are not mistaken for payloads", async () => {
+  // <session>.mode.json and <session>.effort.json share the collector's directory. They carry
+  // no rate_limits today, but the filename filter is what keeps them out on principle.
+  const isPayload = (n: string) => /^[0-9a-fA-F-]{36}\.json$/.test(n)
+  assert.ok(isPayload("cd3ad5bf-3fcd-4f47-8f5b-958d0fcbfa61.json"))
+  assert.ok(!isPayload("cd3ad5bf-3fcd-4f47-8f5b-958d0fcbfa61.mode.json"))
+  assert.ok(!isPayload("cd3ad5bf-3fcd-4f47-8f5b-958d0fcbfa61.effort.json"))
+})

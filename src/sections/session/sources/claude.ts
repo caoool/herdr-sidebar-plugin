@@ -3,6 +3,7 @@ import { join } from "node:path"
 import { claudeDir } from "../../quota/sources/claude.js"
 import { permissionFromScreen, sandboxFromSettings } from "./claude-live.js"
 import { outputSpeed } from "./claude-speed.js"
+import { effortPreset } from "./claude-effort.js"
 import { cleanModelName } from "../format.js"
 import type { SessionInfo } from "../types.js"
 
@@ -40,7 +41,11 @@ export async function readClaudeSession(sessionId: string, paneId?: string): Pro
     agent: "claude",
     sessionId,
     model: cleanModelName(d.model?.display_name ?? d.model?.id ?? null),
-    effort: d.effort?.level ?? null,
+    // The preset when there is one worth naming — "ultracode" runs at xhigh, and the payload
+    // reports only the level — otherwise the level itself.
+    effort: (typeof d.transcript_path === "string"
+      ? await effortPreset(d.transcript_path, sessionId, d.effort?.level ?? null).catch(() => null)
+      : null) ?? d.effort?.level ?? null,
     permissionMode,
     permissionModeIsGlobal: false,
     // Derived from layered settings rather than the payload, which has no sandbox field.

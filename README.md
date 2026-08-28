@@ -150,7 +150,7 @@ except `off`.
 | | claude | codex | grok |
 |---|---|---|---|
 | model | `model.display_name` | `turn_context.model` | `summary.json` `current_model_id` |
-| effort | `effort.level` | `turn_context.effort` | `summary.json` `reasoning_effort` |
+| effort | `effort.level`, or the `/effort` preset from the transcript | `turn_context.effort` | `summary.json` `reasoning_effort` |
 | context | `context_window.used_percentage` + `context_window_size` | `token_count.info` + `model_context_window` | `updates.jsonl` `_meta.totalTokens` ÷ `models_cache` `context_window` |
 | speed | transcript, 120s window of request intervals | Δ`total_token_usage.output_tokens` ÷ Δtimestamp | `turn_completed` `usage.outputTokens ÷ apiDurationMs` |
 | permission | the pane's footer, with a hook as fallback | `turn_context.approval_policy` | `config.toml` only, machine-wide |
@@ -175,6 +175,14 @@ nearest scope first, from the project's `.claude/settings.local.json` down to th
 `settings.json`. This is the mechanism ccstatusline's indicator uses and it carries the same
 caveat: managed policy or a CLI flag can override those files, so it describes configuration
 rather than a guaranteed live state.
+
+**Effort** shows the preset where one exists. `/effort ultracode` sets "xhigh + dynamic workflow
+orchestration", so the payload reports `xhigh` and the preset name reaches no config file — it is
+session-only state. It is recoverable because `/effort` echoes its result into the transcript as
+command output, which the sidebar reads. The tail is checked first so a change is picked up
+immediately; only if nothing is found there is the whole file scanned, once, and remembered per
+session. A remembered preset is dropped if its underlying level stops matching what the payload
+reports, since effort can be changed by routes that leave no transcript line.
 
 Model names are shown without their parenthetical asides: Claude reports
 "Opus 5 (1M context) (default)", and the context variant and default marker describe the

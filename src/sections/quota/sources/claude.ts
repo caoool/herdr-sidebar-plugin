@@ -72,7 +72,10 @@ export function reconcile(payloads: any[]): QuotaWindow[] {
 
 async function payloads(): Promise<any[]> {
   const dir = claudeDir()
-  const names = (await readdir(dir).catch(() => [])).filter((n) => n.endsWith(".json"))
+  // Only the collector's own files. Sibling state written by other parts of the plugin —
+  // <session>.mode.json, <session>.effort.json — lives here too and is not a payload; it
+  // parses harmlessly today but would silently become a payload the day it grew a matching key.
+  const names = (await readdir(dir).catch(() => [])).filter((n) => /^[0-9a-fA-F-]{36}\.json$/.test(n))
   const read = await Promise.all(
     names.map(async (n) => {
       const text = await readFile(join(dir, n), "utf8").catch(() => null)
