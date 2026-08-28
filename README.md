@@ -151,7 +151,7 @@ except `off`.
 |---|---|---|---|
 | model | `model.display_name` | `turn_context.model` | `summary.json` `current_model_id` |
 | effort | `effort.level`, or the `/effort` preset from the transcript | `turn_context.effort` | `summary.json` `reasoning_effort` |
-| context | `context_window.used_percentage` + `context_window_size` | `token_count.info` + `model_context_window` | `updates.jsonl` `_meta.totalTokens` ÷ `models_cache` `context_window` |
+| context | `context_window.used_percentage` + `context_window_size` | `token_count.info` + `model_context_window` | `updates.jsonl` `_meta.totalTokens` ÷ `models_cache` `context_window` — **not** `usage.totalTokens` |
 | speed | transcript, 120s window of request intervals | Δ`total_token_usage.output_tokens` ÷ Δtimestamp | `turn_completed` `usage.outputTokens ÷ apiDurationMs` |
 | permission | the pane's footer, with a hook as fallback | `turn_context.approval_policy` | `config.toml` only, machine-wide |
 | sandbox | layered settings `sandbox.enabled` | `turn_context.sandbox_policy.type` | `summary.json` `sandbox_profile` |

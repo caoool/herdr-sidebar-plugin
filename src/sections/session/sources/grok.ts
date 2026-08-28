@@ -40,32 +40,42 @@ async function contextWindowFor(modelId: string | null): Promise<number | null> 
 }
 
 /**
- * Grok is the only agent that reports a response's own duration, so its rate is the least
- * approximate of the three: `turn_completed` carries outputTokens beside the apiDurationMs
- * that produced them.
+ * Context occupancy and generation rate, from two different fields that must not be confused.
+ *
+ * `_meta.totalTokens` is the running size of the context: it climbs through a session and drops
+ * again when the context is trimmed, which is what makes it context rather than a total.
+ *
+ * `turn_completed.usage.totalTokens` is cumulative spend for the whole session — on one
+ * observed session it read 1,031,971 against a 500,000-token window, most of it cached reads.
+ * Using it as context reported 206%, clamped to a permanent 100%. It is the right field for
+ * nothing on this row, and is deliberately not consulted for context here.
+ *
+ * The rate does come from `turn_completed`, where `outputTokens` sits beside the
+ * `apiDurationMs` that produced them — the only exact generation figure of the three agents.
  */
-function fromUpdates(lines: string[]): { totalTokens: number | null; perSecond: number | null } {
-  let totalTokens: number | null = null
+export function fromUpdates(lines: string[]): { contextTokens: number | null; perSecond: number | null } {
+  let contextTokens: number | null = null
   let perSecond: number | null = null
+
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i]
     if (!line.includes("otalTokens") && !line.includes("usage")) continue
     let rec: any
     try { rec = JSON.parse(line) } catch { continue }
-    const update = rec?.params?.update
-    const meta = rec?.params?._meta
 
-    if (totalTokens === null && typeof meta?.totalTokens === "number") totalTokens = meta.totalTokens
+    const meta = rec?.params?._meta
+    if (contextTokens === null && typeof meta?.totalTokens === "number") contextTokens = meta.totalTokens
+
+    const update = rec?.params?.update
     if (perSecond === null && update?.sessionUpdate === "turn_completed") {
       const u = update.usage
       if (typeof u?.outputTokens === "number" && typeof u?.apiDurationMs === "number" && u.apiDurationMs > 0) {
         perSecond = u.outputTokens / (u.apiDurationMs / 1000)
       }
-      if (totalTokens === null && typeof u?.totalTokens === "number") totalTokens = u.totalTokens
     }
-    if (totalTokens !== null && perSecond !== null) break
+    if (contextTokens !== null && perSecond !== null) break
   }
-  return { totalTokens, perSecond }
+  return { contextTokens, perSecond }
 }
 
 export async function readGrokSession(sessionId: string): Promise<SessionInfo | null> {
@@ -78,7 +88,7 @@ export async function readGrokSession(sessionId: string): Promise<SessionInfo | 
 
   const model = typeof summary.current_model_id === "string" ? summary.current_model_id : null
   const windowSize = await contextWindowFor(model)
-  const { totalTokens, perSecond } = fromUpdates(await tailLines(join(dir, "updates.jsonl")))
+  const { contextTokens, perSecond } = fromUpdates(await tailLines(join(dir, "updates.jsonl")))
 
   // Grok's permission mode lives only in machine-wide config; the running session may have been
   // started with a flag that overrode it, so it is reported as the weaker claim that it is.
@@ -100,9 +110,10 @@ export async function readGrokSession(sessionId: string): Promise<SessionInfo | 
         ? summary.sandbox_profile.toLowerCase() !== "off"
         : null,
     context:
-      windowSize || totalTokens !== null
+      windowSize || contextTokens !== null
         ? {
-            usedPercent: totalTokens !== null && windowSize ? Math.min(100, (totalTokens / windowSize) * 100) : null,
+            usedPercent:
+              contextTokens !== null && windowSize ? Math.min(100, (contextTokens / windowSize) * 100) : null,
             windowSize,
           }
         : null,
