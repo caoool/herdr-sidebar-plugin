@@ -156,6 +156,9 @@ export function sessionBlock(
     if (rows.length) rows.push("")
     rows.push(rowFor("WORKSPACE", text(project.workspace)))
     rows.push(rowFor("BRANCH", text(project.branch)))
+    // Kept even when empty. Most checkouts are not worktrees and most branches are level, so
+    // these dash more often than not — but a table whose rows come and go is harder to read at
+    // a glance than one whose shape is fixed and whose blanks are explicit.
     rows.push(rowFor("WORKTREE", text(project.worktree)))
     rows.push(rowFor("DIFF", text(project.diff || null)))
   }
@@ -163,8 +166,7 @@ export function sessionBlock(
   // The session's name rides the heading rather than taking a row of its own: it names the
   // block, which is what a heading is for, and the rows below are all facts about it.
   const heading = info?.name
-    ? labelled("SESSION", [{ text: truncate(info.name, Math.max(8, width - 9)), paint: asLabel }],
-        width, style.bold)
+    ? labelled("SESSION", [{ text: truncate(info.name, Math.max(8, width - 9)) }], width, style.bold)
     : style.bold("SESSION")
 
   return [finish(heading), "", ...rows]

@@ -122,10 +122,11 @@ test("styling leaves every row the same width", () => {
   assert.deepEqual(styled, plain)
 })
 
-test("the session name rides the heading, flush right and one step back", () => {
+test("the session name rides the heading, flush right, coloured like any value", () => {
   const [heading] = sessionBlock(info, project, 34, TERMINAL)
   assert.match(strip(heading), /^SESSION\s+Herdr sidebar plugin$/)
-  assert.match(heading, /\x1b\[38;5;250mHerdr sidebar plugin\x1b\[0m$/)
+  // Plain, like the branch value beneath it — no escape wraps the name itself.
+  assert.ok(heading.endsWith("Herdr sidebar plugin"), heading)
   assert.equal(strip(heading).length, 34)
 })
 
@@ -159,7 +160,8 @@ test("project values render flush right like the rest", () => {
   assert.ok(row(lines, "DIFF").endsWith("↑2 ↓1"))
 })
 
-test("absent project values keep their row with a dash", () => {
+test("worktree and diff keep their rows when empty, showing a dash", () => {
+  // The table's shape stays fixed so the eye learns where to look; blanks are explicit.
   const lines = sessionBlock(info, { ...project, worktree: null, diff: "" }, 34, PLAIN)
   assert.ok(row(lines, "WORKTREE").endsWith("—"))
   assert.ok(row(lines, "DIFF").endsWith("—"))
