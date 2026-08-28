@@ -40,6 +40,7 @@ export async function readClaudeSession(sessionId: string, paneId?: string): Pro
   return {
     agent: "claude",
     sessionId,
+    name: typeof d.session_name === "string" ? d.session_name : null,
     model: cleanModelName(d.model?.display_name ?? d.model?.id ?? null),
     // The preset when there is one worth naming — "ultracode" runs at xhigh, and the payload
     // reports only the level — otherwise the level itself.

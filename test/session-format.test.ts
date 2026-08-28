@@ -6,8 +6,15 @@ import type { SessionInfo } from "../src/sections/session/types.js"
 
 const strip = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "")
 
+/**
+ * Find a row by its label, so adding or reordering rows does not break every assertion.
+ * The trailing space matters: "MODE" is a prefix of "MODEL".
+ */
+const row = (lines: string[], label: string): string =>
+  lines.find((l) => strip(l).startsWith(label + " ")) ?? ""
+
 const info: SessionInfo = {
-  agent: "codex", sessionId: "s", model: "gpt-5.6-sol", effort: "high",
+  agent: "codex", sessionId: "s", name: "Herdr sidebar plugin", model: "gpt-5.6-sol", effort: "high",
   permissionMode: "on-request", permissionModeIsGlobal: false, sandboxEnabled: true,
   context: { usedPercent: 82, windowSize: 258_400 }, outputPerSecond: 155, observedAt: Date.now(),
 }
@@ -44,55 +51,55 @@ test("painting a segment never changes the row's width", () => {
 
 test("the block is the four specified rows, titled, with no gauge", () => {
   const lines = sessionBlock(info, 30, PLAIN)
-  assert.equal(lines.length, 6)
   assert.equal(lines[0], "SESSION")
   assert.equal(lines[1], "")
-  assert.ok(lines[2].startsWith("MODEL") && lines[2].endsWith("gpt-5.6-sol | high"))
-  assert.ok(lines[3].startsWith("MODE") && lines[3].endsWith("● on-request"))
-  assert.ok(lines[4].startsWith("CONTEXT") && lines[4].endsWith("82% | 258K"))
-  assert.ok(lines[5].startsWith("SPEED") && lines[5].endsWith("155 t/s"))
+  assert.ok(row(lines, "NAME").endsWith("Herdr sidebar plugin"))
+  assert.ok(row(lines, "MODEL").endsWith("gpt-5.6-sol | high"))
+  assert.ok(row(lines, "MODE").endsWith("● on-request"))
+  assert.ok(row(lines, "CONTEXT").endsWith("82% | 258K"))
+  assert.ok(row(lines, "SPEED").endsWith("155 t/s"))
   for (const l of lines) assert.ok(!l.includes("█") && !l.includes("░"), `gauge left in: ${l}`)
 })
 
 test("an unsandboxed agent shows an unlit dot, not a missing one", () => {
-  const [, , , mode] = sessionBlock({ ...info, sandboxEnabled: false }, 30, PLAIN)
+  const mode = row(sessionBlock({ ...info, sandboxEnabled: false }, 30, PLAIN), "MODE")
   assert.ok(mode.endsWith("○ on-request"), mode)
 })
 
 test("unknown sandbox state is a dash rather than a guessed dot", () => {
-  const [, , , mode] = sessionBlock({ ...info, sandboxEnabled: null }, 30, PLAIN)
+  const mode = row(sessionBlock({ ...info, sandboxEnabled: null }, 30, PLAIN), "MODE")
   assert.ok(mode.endsWith("— on-request"), mode)
 })
 
 test("context reaches red later than quota does", () => {
   // Quota at 82% means most of a period is gone with no recourse but to wait. Context at 82%
   // is ordinary working territory, so it stays orange and turns red only near compaction.
-  const [, , , , orange] = sessionBlock(info, 30, TERMINAL)
+  const orange = row(sessionBlock(info, 30, TERMINAL), "CONTEXT")
   assert.match(orange, /\x1b\[38;5;208m82%/)
 
   const near = { ...info, context: { usedPercent: 90, windowSize: 258_400 } }
-  const [, , , , red] = sessionBlock(near, 30, TERMINAL)
+  const red = row(sessionBlock(near, 30, TERMINAL), "CONTEXT")
   assert.match(red, /\x1b\[38;5;203m90%/)
 })
 
 test("a low context reading is green, like a low quota reading", () => {
   const low = { ...info, context: { usedPercent: 12, windowSize: 1_000_000 } }
-  const [, , , , context] = sessionBlock(low, 30, TERMINAL)
+  const context = row(sessionBlock(low, 30, TERMINAL), "CONTEXT")
   assert.match(context, /\x1b\[38;5;41m12%/)
 })
 
 test("the sandbox dot is lit green and unlit dim", () => {
-  const [, , , on] = sessionBlock(info, 30, TERMINAL)
+  const on = row(sessionBlock(info, 30, TERMINAL), "MODE")
   assert.match(on, /\x1b\[38;5;41m●/)
-  const [, , , off] = sessionBlock({ ...info, sandboxEnabled: false }, 30, TERMINAL)
+  const off = row(sessionBlock({ ...info, sandboxEnabled: false }, 30, TERMINAL), "MODE")
   assert.match(off, /\x1b\[2m○/)
 })
 
 test("half a two-part value still renders the other half", () => {
-  const [, , model] = sessionBlock({ ...info, effort: null }, 30, PLAIN)
+  const model = row(sessionBlock({ ...info, effort: null }, 30, PLAIN), "MODEL")
   assert.ok(model.endsWith("gpt-5.6-sol"), model)
   const partial = { ...info, context: { usedPercent: null, windowSize: 258_400 } }
-  const [, , , , context] = sessionBlock(partial, 30, PLAIN)
+  const context = row(sessionBlock(partial, 30, PLAIN), "CONTEXT")
   assert.ok(context.endsWith("— | 258K"), context)
 })
 
@@ -101,7 +108,7 @@ test("no session means no block at all", () => {
 })
 
 test("row labels are dimmed, values are not", () => {
-  const [, , model] = sessionBlock(info, 30, TERMINAL)
+  const model = row(sessionBlock(info, 30, TERMINAL), "MODEL")
   assert.match(model, /^\x1b\[38;5;250mMODEL\x1b\[0m/)
   assert.ok(model.endsWith("gpt-5.6-sol | high"), "the value keeps full strength")
 })
@@ -110,4 +117,24 @@ test("styling leaves every row the same width", () => {
   const plain = sessionBlock(info, 30, PLAIN)
   const styled = sessionBlock(info, 30, TERMINAL).map(strip)
   assert.deepEqual(styled, plain)
+})
+
+test("the session name leads the block, in bold", () => {
+  const [, , name] = sessionBlock(info, 30, TERMINAL)
+  assert.match(name, /^\x1b\[38;5;250mNAME\x1b\[0m/)
+  assert.match(name, /\x1b\[1mHerdr sidebar plugin\x1b\[0m$/)
+})
+
+test("a session with no name omits the row rather than showing a dash", () => {
+  const lines = sessionBlock({ ...info, name: null }, 30, PLAIN)
+  assert.equal(lines.filter((l) => l.startsWith("NAME ")).length, 0)
+  assert.ok(lines[2].startsWith("MODEL"))
+})
+
+test("a long name is cut with an ellipsis, keeping its distinguishing start", () => {
+  const long = { ...info, name: "Herdr sidebar plugin validation and rollout" }
+  const line = row(sessionBlock(long, 30, PLAIN), "NAME")
+  assert.equal(line.length, 30)
+  assert.ok(line.endsWith("…"), line)
+  assert.ok(line.includes("Herdr sidebar"))
 })

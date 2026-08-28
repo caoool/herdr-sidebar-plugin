@@ -2,6 +2,7 @@ import { readdir, stat } from "node:fs/promises"
 import { join } from "node:path"
 import { homedir } from "node:os"
 import { tailLines } from "../../../tail.js"
+import { codexSessionName } from "./codex-name.js"
 import type { SessionInfo } from "../types.js"
 
 const ROOT = join(homedir(), ".codex", "sessions")
@@ -93,6 +94,7 @@ export async function readCodexSession(sessionId: string): Promise<SessionInfo |
   return {
     agent: "codex",
     sessionId,
+    name: await codexSessionName(sessionId).catch(() => null),
     model: typeof turn?.model === "string" ? turn.model : null,
     effort: typeof turn?.effort === "string" ? turn.effort : null,
     permissionMode: typeof turn?.approval_policy === "string" ? turn.approval_policy : null,

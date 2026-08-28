@@ -11,6 +11,8 @@ import type { ProviderKind } from "../../types.js"
 export type SessionInfo = {
   agent: ProviderKind
   sessionId: string | null
+  /** The session's own title, as the agent names it. */
+  name: string | null
   model: string | null
   effort: string | null
   permissionMode: string | null

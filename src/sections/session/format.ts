@@ -37,6 +37,16 @@ export function abbreviate(n: number): string {
 }
 
 /**
+ * Names run long — "Herdr sidebar plugin validation" is 31 characters against a value column of
+ * about 25 — so they are cut with an ellipsis rather than wrapped or allowed to shove the label
+ * off the row. The tail is dropped because session titles put their distinguishing words first.
+ */
+export function truncate(text: string, max: number): string {
+  if (max <= 1) return text.slice(0, Math.max(0, max))
+  return text.length <= max ? text : text.slice(0, max - 1).trimEnd() + "…"
+}
+
+/**
  * A piece of a row's value. `paint` is applied for display only — every width is measured from
  * `text`, because escape sequences occupy no columns and measuring the painted string would
  * push each row out of alignment.
@@ -93,9 +103,14 @@ export function sessionBlock(info: SessionInfo | null, width: number, style: Sty
       ? { text: DASH }
       : { text: info.sandboxEnabled ? ON : OFF, paint: (t) => mark(t, info.sandboxEnabled === true) }
 
+  const nameRow = info.name
+    ? [finish(labelled("NAME", [{ text: truncate(info.name, Math.max(8, width - 6)), paint: style.bold }], width, asLabel))]
+    : []
+
   return [
     finish(style.bold("SESSION")),
     "",
+    ...nameRow,
     finish(labelled("MODEL", twoPart(info.model, info.effort), width, asLabel)),
     finish(labelled("MODE", [sandbox, { text: " " }, { text: info.permissionMode ?? DASH }], width, asLabel)),
     finish(labelled("CONTEXT", contextSegments, width, asLabel)),

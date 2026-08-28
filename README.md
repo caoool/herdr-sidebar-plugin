@@ -9,6 +9,7 @@ The sidebar is a stack of independent **sections**. Today there is one:
 |---|---|---|
 | **quota** | shipped | subscription utilisation and reset per agent |
 | **session** | shipped | what the agent in this pane is doing right now |
+| **project** | shipped | the workspace, its branch and divergence, its worktree |
 | mcp | planned | connected MCP servers and their status |
 | tasks | planned | the agent's current task list |
 
@@ -126,6 +127,7 @@ dashes.
 ```
   SESSION
 
+  NAME        Refactor the parser
   MODEL      gpt-5.6-sol | high
   MODE              ● on-request
   CONTEXT             72% | 258K
@@ -206,6 +208,30 @@ cumulative — it equals `current_usage.output_tokens` in every session observed
 it is meaningless, and dividing one response's tokens by the increase in
 `cost.total_api_duration_ms` understates by roughly the number of API calls in the sampling
 interval, which in a tool loop is several.
+
+## The project section
+
+Where the work is happening. The workspace name and cwd come from the context herdr injects when
+it launches the pane, so naming the project costs nothing; only the git facts are asked for.
+
+```
+  PROJECT
+
+  herdr-sidebar-plugin
+  main                    ↑2 ↓1
+  feature-x
+```
+
+Divergence reads like herdr's own, and is omitted when there is none: a branch level with its
+upstream has nothing to report, and printing `↑0 ↓0` would make the ordinary case the loudest
+thing on the row. A branch with no upstream shows no divergence either. The worktree row appears
+only for a linked worktree — detected by git's own directory layout, where a linked checkout
+keeps its git dir under `<common>/worktrees/<name>` — since the main checkout has nothing to add.
+
+herdr computes the same facts for its own sidebar rows but exposes them only for worktree-backed
+workspaces (`workspace.get` carries no branch), so this asks git directly: two invocations, the
+first batching three rev-parse queries, cached for fifteen seconds because git state changes at
+human speed while the pane repaints every five.
 
 ## Install
 

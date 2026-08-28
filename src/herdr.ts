@@ -17,6 +17,16 @@ const run = promisify(execFile)
 export const selfPaneId = (): string | null => process.env.HERDR_PANE_ID ?? null
 export const selfTabId = (): string | null => process.env.HERDR_TAB_ID ?? null
 export const herdrBin = (): string => process.env.HERDR_BIN_PATH ?? "herdr"
+/**
+ * The context herdr injects when it launches the pane: workspace id, label and cwd, plus the
+ * pane it was opened beside. Parsed once — it describes the pane's launch, not live state.
+ */
+export function paneContext(): Record<string, string> | null {
+  const raw = process.env.HERDR_PLUGIN_CONTEXT_JSON
+  if (!raw) return null
+  try { return JSON.parse(raw) } catch { return null }
+}
+
 export const stateDir = (): string =>
   process.env.HERDR_PLUGIN_STATE_DIR ?? `${process.env.HOME}/.local/state/herdr/plugins/caoool.sidebar`
 

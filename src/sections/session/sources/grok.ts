@@ -111,6 +111,7 @@ export async function readGrokSession(sessionId: string): Promise<SessionInfo | 
   return {
     agent: "grok",
     sessionId,
+    name: typeof summary.generated_title === "string" ? summary.generated_title : null,
     model,
     effort: typeof summary.reasoning_effort === "string" ? summary.reasoning_effort : null,
     permissionMode,
