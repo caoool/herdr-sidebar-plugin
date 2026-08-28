@@ -8,6 +8,17 @@ const GROK = join(homedir(), ".grok")
 const SESSIONS = join(GROK, "sessions")
 
 /**
+ * How far back to read updates.jsonl.
+ *
+ * Sized against the record rather than guessed. Grok's tool_call_update entries carry large
+ * payloads — one observed session averaged 7,930 bytes per line — while `turn_completed`, which
+ * is what carries the generation rate, appears once per turn and sat 85 lines back. A 256KB
+ * window reaches only about 33 lines there, so on any tool-heavy turn the rate fell to a dash
+ * until the next turn landed. A megabyte spans roughly 132 lines, comfortably more than a turn.
+ */
+const UPDATES_TAIL = 1024 * 1024
+
+/**
  * Grok keeps a directory per session, under a percent-encoded copy of the cwd:
  *
  *   ~/.grok/sessions/%2FUsers%2Flu/<session-id>/summary.json
@@ -88,7 +99,7 @@ export async function readGrokSession(sessionId: string): Promise<SessionInfo | 
 
   const model = typeof summary.current_model_id === "string" ? summary.current_model_id : null
   const windowSize = await contextWindowFor(model)
-  const { contextTokens, perSecond } = fromUpdates(await tailLines(join(dir, "updates.jsonl")))
+  const { contextTokens, perSecond } = fromUpdates(await tailLines(join(dir, "updates.jsonl"), UPDATES_TAIL))
 
   // Grok's permission mode lives only in machine-wide config; the running session may have been
   // started with a flag that overrode it, so it is reported as the weaker claim that it is.
