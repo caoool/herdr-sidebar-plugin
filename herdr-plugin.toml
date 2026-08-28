@@ -21,7 +21,7 @@ command = ["node", "bin/startup.mjs"]
 # The sidebar itself. Placement is overridden at open time to a right split.
 [[panes]]
 id = "sidebar"
-title = "quota"
+title = "sidebar"
 placement = "split"
 command = ["bash", "bin/pane.sh"]
 
