@@ -122,10 +122,10 @@ test("styling leaves every row the same width", () => {
   assert.deepEqual(styled, plain)
 })
 
-test("the session name rides the heading, in bold, flush right", () => {
+test("the session name rides the heading, flush right and one step back", () => {
   const [heading] = sessionBlock(info, project, 34, TERMINAL)
   assert.match(strip(heading), /^SESSION\s+Herdr sidebar plugin$/)
-  assert.match(heading, /\x1b\[1mHerdr sidebar plugin\x1b\[0m$/)
+  assert.match(heading, /\x1b\[38;5;250mHerdr sidebar plugin\x1b\[0m$/)
   assert.equal(strip(heading).length, 34)
 })
 
@@ -178,4 +178,26 @@ test("divergence reads like herdr's own, and is silent when there is none", () =
   assert.equal(divergence(0, 4), "↓4")
   assert.equal(divergence(0, 0), "")
   assert.equal(divergence(null, null), "")
+})
+
+test("every stand-in dash is dimmed, wherever it appears", () => {
+  const bare = sessionBlock(
+    { ...info, model: null, effort: null, permissionMode: null, sandboxEnabled: null,
+      context: { usedPercent: null, windowSize: null }, outputPerSecond: null },
+    { workspace: null, branch: null, worktree: null, diff: "" },
+    34, TERMINAL,
+  )
+  for (const label of ["MODEL", "MODE", "CONTEXT", "SPEED", "WORKSPACE", "BRANCH", "WORKTREE", "DIFF"]) {
+    const line = row(bare, label)
+    assert.ok(line.includes("—"), `${label} should show a dash`)
+    assert.match(line, /\x1b\[2m—/, `${label}'s dash should be dimmed: ${JSON.stringify(line)}`)
+  }
+})
+
+test("dimming a dash does not change the row's width", () => {
+  const bare = { ...info, model: null, effort: null }
+  assert.equal(
+    strip(row(sessionBlock(bare, project, 34, TERMINAL), "MODEL")),
+    row(sessionBlock(bare, project, 34, PLAIN), "MODEL"),
+  )
 })

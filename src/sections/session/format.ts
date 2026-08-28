@@ -67,10 +67,15 @@ export function labelled(
 }
 
 /** Joins the halves of a two-part value, collapsing to a dash when neither half is known. */
-function twoPart(left: string | null, right: string | null, paintLeft?: (s: string) => string): Segment[] {
-  if (left === null && right === null) return [{ text: DASH }]
+function twoPart(
+  left: string | null,
+  right: string | null,
+  paintLeft?: (s: string) => string,
+  muted: (s: string) => string = (s) => s,
+): Segment[] {
+  if (left === null && right === null) return [{ text: DASH, paint: muted }]
   if (right === null) return [{ text: left!, paint: paintLeft }]
-  if (left === null) return [{ text: DASH, paint: paintLeft }, { text: SEP }, { text: right }]
+  if (left === null) return [{ text: DASH, paint: paintLeft ?? muted }, { text: SEP }, { text: right }]
   return [{ text: left, paint: paintLeft }, { text: SEP }, { text: right }]
 }
 
@@ -105,37 +110,44 @@ export function sessionBlock(
   const finish = style.line ?? ((s: string) => s)
   const mark = style.mark ?? ((t: string) => t)
   const asLabel = style.label ?? ((t: string) => t)
+  const asMuted = style.muted ?? ((t: string) => t)
 
   const rowFor = (label: string, segments: Segment[]) =>
     finish(labelled(label, segments, width, asLabel))
   /** A value column of roughly this much, once the label and its gap are taken. */
   const valueWidth = Math.max(8, width - 10)
-  const text = (v: string | null): Segment[] => [{ text: v ? truncate(v, valueWidth) : DASH }]
+  const text = (v: string | null): Segment[] =>
+    v ? [{ text: truncate(v, valueWidth) }] : [{ text: DASH, paint: asMuted }]
 
   const rows: string[] = []
 
   if (info) {
-    rows.push(rowFor("MODEL", twoPart(info.model, info.effort)))
+    rows.push(rowFor("MODEL", twoPart(info.model, info.effort, undefined, asMuted)))
 
     // The sandbox state is a lit or unlit dot rather than a policy name: the policies differ
     // per agent — a Codex sandbox_policy, a Grok profile, a Claude boolean — and only the
     // on/off distinction is common to all three and meaningful at this width.
     const sandbox: Segment =
       info.sandboxEnabled === null
-        ? { text: DASH }
+        ? { text: DASH, paint: asMuted }
         : { text: info.sandboxEnabled ? ON : OFF, paint: (t) => mark(t, info.sandboxEnabled === true) }
-    rows.push(rowFor("MODE", [sandbox, { text: " " }, { text: info.permissionMode ?? DASH }]))
+    rows.push(rowFor("MODE", [
+      sandbox,
+      { text: " " },
+      info.permissionMode ? { text: info.permissionMode } : { text: DASH, paint: asMuted },
+    ]))
 
     const percent = info.context?.usedPercent ?? null
     rows.push(rowFor("CONTEXT", twoPart(
       percent === null ? null : `${Math.round(percent)}%`,
       info.context?.windowSize == null ? null : abbreviate(info.context.windowSize),
       (t) => (style.paintContext ?? style.paint)(t, percent),
+      asMuted,
     )))
 
-    rows.push(rowFor("SPEED", [
-      { text: info.outputPerSecond === null ? `${DASH} t/s` : `${Math.round(info.outputPerSecond)} t/s` },
-    ]))
+    rows.push(rowFor("SPEED", info.outputPerSecond === null
+      ? [{ text: DASH, paint: asMuted }, { text: " t/s" }]
+      : [{ text: `${Math.round(info.outputPerSecond)} t/s` }]))
   }
 
   if (project) {
@@ -151,7 +163,7 @@ export function sessionBlock(
   // The session's name rides the heading rather than taking a row of its own: it names the
   // block, which is what a heading is for, and the rows below are all facts about it.
   const heading = info?.name
-    ? labelled("SESSION", [{ text: truncate(info.name, Math.max(8, width - 9)), paint: style.bold }],
+    ? labelled("SESSION", [{ text: truncate(info.name, Math.max(8, width - 9)), paint: asLabel }],
         width, style.bold)
     : style.bold("SESSION")
 

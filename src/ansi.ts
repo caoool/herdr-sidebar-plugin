@@ -86,6 +86,8 @@ export type Style = {
   line?: (s: string) => string
   /** A two-state indicator: on reads as good, off as inert. */
   mark?: (text: string, on: boolean) => string
+  /** Placeholder text standing in for a value that is not there. */
+  muted?: (s: string) => string
   /** The context ramp, which reaches red later than the quota one. */
   paintContext?: (text: string, percent: number | null) => string
   /**
@@ -117,8 +119,18 @@ export const mark = (text: string, on: boolean): string => wrap(on ? GREEN : DIM
  */
 export const label = (s: string): string => wrap(LABEL, s)
 
+/**
+ * A stand-in for a value that is not there.
+ *
+ * Uses the dim attribute rather than the label grey, which is deliberate: an em dash is not
+ * naming anything, it is marking an absence, and it should sit further back than the words that
+ * do name things. This is the same weight already used for a missing percentage and an unlit
+ * sandbox dot, so absence reads consistently wherever it appears.
+ */
+export const muted = (s: string): string => wrap(DIM, s)
+
 /** The pane's own agent: bold name, full-strength ramp. */
-export const TERMINAL: Style = { bold, paint: paintPercent, paintContext, mark, label }
+export const TERMINAL: Style = { bold, paint: paintPercent, paintContext, mark, label, muted }
 
 /**
  * Every other agent. Their figures are still worth showing — quota is account-wide — but they
