@@ -45,8 +45,22 @@ test("pinned rows are dropped from the bottom, keeping the top of the sidebar", 
 })
 
 test("the clamped offset is returned so the caller can store it back", () => {
-  const { offset } = compose(rows("p", 2), rows("s", 8), 12, 20, 999, PLAIN)
+  const { offset } = compose(rows("p", 2), rows("s", 30), 12, 20, 999, PLAIN)
   assert.ok(offset < 999)
+})
+
+test("the divider never exceeds width even with long markers", () => {
+  const strip = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "")
+  const { lines } = compose(rows("p", 0), rows("s", 100), 10, 10, 999, PLAIN)
+  const divider = lines.find((l) => l.includes("↑") || l.includes("↓") || l.includes("─"))
+  assert.ok(divider, "divider should exist")
+  const strippedDivider = strip(divider)
+  assert.equal(strippedDivider.length, 10, `divider width should be exactly 10, got ${strippedDivider.length}`)
+})
+
+test("height=0 produces no rows", () => {
+  const { lines } = compose(rows("p", 5), rows("s", 30), 0, 20, 0, PLAIN)
+  assert.equal(lines.length, 0, `height 0 should produce 0 rows, got ${lines.length}`)
 })
 
 test("styling the divider does not change its width", () => {

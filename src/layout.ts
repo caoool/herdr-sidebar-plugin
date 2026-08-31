@@ -45,10 +45,23 @@ export function compose(
   }
 
   const w = window(scroll, room, offset)
+
+  // Don't emit a divider if there's no scroll content to show
+  if (w.lines.length === 0) {
+    return { lines: [...head].slice(0, height), offset: 0 }
+  }
+
   const tag = marker(w.above, w.below)
-  const rule = "─".repeat(Math.max(0, width - (tag ? tag.length + 2 : 0)))
   const dim = style.muted ?? ((s: string) => s)
-  const divider = tag ? dim(rule) + " " + dim(tag) + dim(" ") : dim(rule)
+
+  // Clamp divider to width: if tag doesn't fit, show just dashes
+  let divider: string
+  if (tag && tag.length + 2 <= width) {
+    const rule = "─".repeat(width - tag.length - 2)
+    divider = dim(rule) + " " + dim(tag) + dim(" ")
+  } else {
+    divider = dim("─".repeat(width))
+  }
 
   return { lines: [...head, divider, ...w.lines], offset: w.offset }
 }
