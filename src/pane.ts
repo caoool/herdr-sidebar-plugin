@@ -52,6 +52,25 @@ function dismiss() {
   else process.exit(0)
 }
 
+/**
+ * The label herdr shows on this pane's tab strip. It matches herdr-plugin.toml's `title`.
+ */
+const LABEL = "sidebar"
+
+/**
+ * Claim the pane's label on every start.
+ *
+ * herdr stamps a pane's label from the manifest when the pane is *created* and never revisits
+ * it, so a sidebar opened before the manifest changed keeps the old name for as long as it
+ * stays open — the supervisor in bin/pane.sh replaces this process, not the pane. Renaming
+ * ourselves makes the label a property of the running code rather than of whichever install
+ * happened to open the pane. Idempotent, so re-claiming it every start costs nothing.
+ */
+function claimLabel() {
+  const self = selfPaneId()
+  if (self) execFile(herdrBin(), ["pane", "rename", self, LABEL], () => {})
+}
+
 async function refresh() {
   // A reinstall rewrites the bundle underneath us; restart so the new code takes over.
   const stamp = buildStamp()
@@ -96,4 +115,5 @@ for (const target of new Set(SECTIONS.flatMap((s) => s.watch()))) {
 // platform without recursive watching, and a change of subject when focus moves.
 setInterval(() => refresh().then(render), 5000)
 process.stdout.on("resize", () => { dirty = true; render() })
+claimLabel()
 refresh().then(render)
