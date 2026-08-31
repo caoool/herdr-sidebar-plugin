@@ -22,11 +22,12 @@ import { TERMINAL } from "./ansi.js"
 import { autoDismiss } from "./dismiss.js"
 import { quotaSection } from "./sections/quota/index.js"
 import { sessionSection } from "./sections/session/index.js"
+import { toolsSection } from "./sections/tools/index.js"
 import type { Section } from "./sections/types.js"
 import type { PaneAgent } from "./types.js"
 import { compose } from "./layout.js"
 
-const SECTIONS: Section[] = [quotaSection(), sessionSection()]
+const SECTIONS: Section[] = [quotaSection(), sessionSection(), toolsSection()]
 
 let subject: PaneAgent | null = null
 let dirty = true
