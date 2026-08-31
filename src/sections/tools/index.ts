@@ -27,6 +27,15 @@ function run(cmd: string, args: string[], timeout: number): Promise<string | nul
       // stream and exits non-zero, so stdout is still preferred over the error whenever the
       // process actually ran to completion.
       const incomplete = err?.killed || err?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
+      // TEMPORARY DIAGNOSTIC — remove once the live check is understood.
+      try {
+        const { appendFileSync, mkdirSync } = require("node:fs")
+        mkdirSync(mcpDir(), { recursive: true })
+        appendFileSync(join(mcpDir(), "debug.log"),
+          JSON.stringify({ t: new Date().toISOString(), cmd, args,
+            err: err ? { code: (err as any).code, killed: err.killed, msg: String(err.message).slice(0, 200) } : null,
+            outLen: stdout ? String(stdout).length : 0 }) + "\n")
+      } catch { /* diagnostic only */ }
       resolve(incomplete ? null : stdout ? String(stdout) : err ? null : "")
     })
   })
