@@ -1,6 +1,12 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { namesIn, shortenTool, tally } from "../src/sections/tools/sources/calls.js"
+import { mkdtemp, rm, writeFile, appendFile } from "node:fs/promises"
+import { join } from "node:path"
+import { namesIn, shortenTool, tally, countCalls } from "../src/sections/tools/sources/calls.js"
+
+// Fixture transcripts live under the session scratchpad, never a real agent's own directory.
+const SCRATCH =
+  "/private/tmp/claude-501/-Users-lu-Developments-hobby-herdr-herdr-sidebar-plugin/d3d0ae62-2da6-4d51-970c-5d44f0b78af5/scratchpad"
 
 const claudeLine = (names: string[]) =>
   JSON.stringify({ message: { content: names.map((name) => ({ type: "tool_use", name })) } })
@@ -59,4 +65,44 @@ test("tally sorts by count, breaking ties alphabetically so the order is stable"
 test("a malformed line is skipped rather than throwing", () => {
   assert.deepEqual(namesIn("claude", "{not json"), [])
   assert.deepEqual(tally("claude", ["{not json", claudeLine(["Bash"])]), [{ name: "Bash", count: 1 }])
+})
+
+test("countCalls only advances the cursor past complete lines", async (t) => {
+  const dir = await mkdtemp(join(SCRATCH, "tool-calls-"))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+
+  const path = join(dir, "transcript.jsonl")
+
+  await t.test("a file whose last line is complete is counted once, cursor fully consumed", async () => {
+    await writeFile(path, claudeLine(["Bash"]) + "\n")
+    assert.deepEqual(await countCalls("claude", path), [{ name: "Bash", count: 1 }])
+    // Nothing new was appended, so a second read must not recount the same line.
+    assert.deepEqual(await countCalls("claude", path), [{ name: "Bash", count: 1 }])
+  })
+
+  await t.test(
+    "a truncated trailing record is not counted, and is counted exactly once once completed",
+    async () => {
+      const truncated = join(dir, "truncated.jsonl")
+      const full = claudeLine(["Grep"])
+      // Simulates a refresh landing mid-write: the writer has not yet emitted the newline, so
+      // the record is split at an arbitrary byte offset rather than a JSON boundary.
+      const half = Math.floor(full.length / 2)
+
+      await writeFile(truncated, claudeLine(["Read"]) + "\n" + full.slice(0, half))
+      assert.deepEqual(
+        await countCalls("claude", truncated),
+        [{ name: "Read", count: 1 }],
+        "the partial record must not be counted — Grep should not appear yet",
+      )
+
+      // The writer finishes the line.
+      await appendFile(truncated, full.slice(half) + "\n")
+      assert.deepEqual(
+        await countCalls("claude", truncated),
+        [{ name: "Grep", count: 1 }, { name: "Read", count: 1 }],
+        "the completed record must be counted exactly once — not zero times, not twice",
+      )
+    },
+  )
 })

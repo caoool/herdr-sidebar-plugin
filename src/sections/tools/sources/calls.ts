@@ -1,5 +1,4 @@
 import { createReadStream } from "node:fs"
-import { createInterface } from "node:readline"
 import { readFile, stat } from "node:fs/promises"
 import { join } from "node:path"
 import { claudeDir } from "../../quota/sources/claude.js"
@@ -105,16 +104,38 @@ export async function countCalls(agent: ProviderKind, path: string): Promise<Too
   }
   if (info.size === cursor.size) return sorted(cursor.counts)
 
+  // The cursor may only advance past bytes that formed a complete line. A refresh can land
+  // mid-write (the writer's file ends without a trailing newline yet); the fragment that
+  // produces is unparseable and correctly contributes nothing, but if the cursor advanced past
+  // it anyway the record's remaining bytes would arrive next time as a different, still-broken
+  // fragment — the whole record silently and permanently lost. So newlines are found by hand
+  // (rather than via readline, which hands back a final unterminated chunk indistinguishable
+  // from a real line) and only the bytes up to the last one found are consumed; whatever trails
+  // the final newline is held back for the next call to re-read from its true start.
   const stream = createReadStream(path, { start: cursor.size, end: info.size - 1 })
-  const rl = createInterface({ input: stream, crlfDelay: Infinity })
+  const NEWLINE = 0x0a
+
+  let leftover = Buffer.alloc(0)
+  let bytesRead = 0
+
   try {
-    for await (const line of rl) {
-      for (const raw of namesIn(agent, line)) {
-        const name = shortenTool(raw)
-        cursor.counts.set(name, (cursor.counts.get(name) ?? 0) + 1)
+    for await (const chunk of stream) {
+      bytesRead += chunk.length
+      const buf = leftover.length ? Buffer.concat([leftover, chunk]) : chunk
+      let start = 0
+      let idx: number
+      while ((idx = buf.indexOf(NEWLINE, start)) !== -1) {
+        const line = buf.subarray(start, idx).toString("utf8")
+        for (const raw of namesIn(agent, line)) {
+          const name = shortenTool(raw)
+          cursor.counts.set(name, (cursor.counts.get(name) ?? 0) + 1)
+        }
+        start = idx + 1
       }
+      leftover = buf.subarray(start)
     }
-  } catch { /* a partial read is recovered on the next refresh */ }
-  cursor.size = info.size
+  } catch { /* whatever was consumed above is still credited below; the rest waits for the next refresh */ }
+
+  cursor.size += bytesRead - leftover.length
   return sorted(cursor.counts)
 }
