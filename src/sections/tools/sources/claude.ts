@@ -29,10 +29,12 @@ const STATUS: Array<[RegExp, McpStatus]> = [
  * targets contain hyphens and parenthesised transports.
  *
  * A line that does not even have that shape is not a server and is dropped. A line that does,
- * but whose status word matches none of the four known patterns, still is one — it is kept and
- * counted in the total as `pending`, the status that claims least: not healthy, but not a known
- * failure or auth need either, just "not yet resolved". Dropping it instead would shrink the
- * denominator and leave `n/total` confidently wrong.
+ * but whose status word matches none of the known patterns, still is one — it is kept and
+ * counted in the total as `unverified`, the status that claims least: not healthy, but not a
+ * known failure or auth need either, just "present, but nothing checkable was read". Dropping
+ * it instead would shrink the denominator and leave `n/total` confidently wrong; labelling it
+ * `pending` instead would claim the specific, checkable fact "pending approval", which is not
+ * what was observed.
  */
 export function parseClaudeMcp(stdout: string): McpServer[] {
   const out: McpServer[] = []
@@ -42,7 +44,7 @@ export function parseClaudeMcp(stdout: string): McpServer[] {
     if (cut < 1 || dash < cut) continue
     const tail = line.slice(dash + 3).trim()
     const hit = STATUS.find(([re]) => re.test(tail))
-    const status = hit ? hit[1] : "pending"
+    const status = hit ? hit[1] : "unverified"
     out.push({ name: shortenServer(line.slice(0, cut).trim()), status })
   }
   return out

@@ -117,6 +117,20 @@ test("an MCP server name long enough to fill the row on its own still yields an 
   assert.equal(serverRow.length, 30)
 })
 
+test("an unverified server dashes rather than claiming a status glyph, but still counts toward the total, not the healthy count", () => {
+  const withUnverified: McpSnapshot = {
+    agent: "claude", observedAt: Date.now(),
+    servers: [...mcp.servers, { name: "odd", status: "unverified" }],
+  }
+  const lines = toolsBlock(calls, withUnverified, "claude", 30, TERMINAL)
+  const header = lines.find((l) => strip(l).startsWith("MCP ")) ?? ""
+  // Still 1 healthy (context7) out of a total that now includes the unverified server.
+  assert.ok(strip(header).endsWith("1/4"), header)
+  const oddRow = row(lines, "odd")
+  assert.ok(strip(oddRow).endsWith("—"), oddRow)
+  assert.match(oddRow, /\x1b\[2m—/, "the dash must be dimmed like every other unknown value")
+})
+
 test("a name that exactly fills the row is not needlessly truncated", () => {
   // width 30, a single-digit count leaves a value of 1 char and a minimum 1-column gap, so
   // the label budget is exactly 28 — a name of that length should survive whole, no ellipsis.

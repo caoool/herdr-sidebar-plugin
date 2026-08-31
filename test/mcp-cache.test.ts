@@ -1,6 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { isFresh, TTL, claimLock, readCached, writeCached } from "../src/sections/tools/cache.js"
 import type { McpSnapshot } from "../src/sections/tools/types.js"
@@ -8,13 +9,14 @@ import type { McpSnapshot } from "../src/sections/tools/types.js"
 const snap = (at: number): McpSnapshot => ({ agent: "claude", servers: [], observedAt: at })
 const NOW = 1_800_000_000_000
 
-// Fixture state dirs live under the session scratchpad, never the user's real state directory.
-const SCRATCH =
-  "/private/tmp/claude-501/-Users-lu-Developments-hobby-herdr-herdr-sidebar-plugin/d3d0ae62-2da6-4d51-970c-5d44f0b78af5/scratchpad"
-
-/** Run `fn` with HERDR_PLUGIN_STATE_DIR pointed at a fresh temp dir, then clean up. */
+/**
+ * Run `fn` with HERDR_PLUGIN_STATE_DIR pointed at a fresh OS temp dir, then clean up.
+ *
+ * Never the user's real state directory, and never a path hardcoded to one machine — this
+ * repo is public and runs on more than one machine, and in CI.
+ */
 async function withTempState(fn: () => Promise<void>): Promise<void> {
-  const dir = await mkdtemp(join(SCRATCH, "mcp-cache-"))
+  const dir = await mkdtemp(join(tmpdir(), "herdr-sidebar-"))
   const prev = process.env.HERDR_PLUGIN_STATE_DIR
   process.env.HERDR_PLUGIN_STATE_DIR = dir
   try {

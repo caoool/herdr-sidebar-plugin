@@ -41,6 +41,14 @@ test("unparseable output yields no servers rather than a guess", () => {
   assert.deepEqual(parseClaudeMcp("some unrelated error text"), [])
 })
 
+test("a well-formed line with an unrecognised status word is kept as unverified, not pending", () => {
+  // "pending" would claim the specific, checkable fact "pending approval" — not what was
+  // observed. The server must still appear so the header's denominator stays truthful.
+  const line = "plugin:local:odd: ./x - ??? Some future status Claude doesn't emit yet\n"
+  const servers = parseClaudeMcp(line)
+  assert.deepEqual(servers, [{ name: "odd", status: "unverified" }])
+})
+
 // Captured verbatim from `codex mcp list --json` on 2026-08-31.
 const CODEX = JSON.stringify([
   { name: "codex_app", enabled: false, auth_status: "unsupported" },

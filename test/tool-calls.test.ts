@@ -1,12 +1,9 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { mkdtemp, rm, writeFile, appendFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { namesIn, shortenTool, tally, countCalls } from "../src/sections/tools/sources/calls.js"
-
-// Fixture transcripts live under the session scratchpad, never a real agent's own directory.
-const SCRATCH =
-  "/private/tmp/claude-501/-Users-lu-Developments-hobby-herdr-herdr-sidebar-plugin/d3d0ae62-2da6-4d51-970c-5d44f0b78af5/scratchpad"
 
 const claudeLine = (names: string[]) =>
   JSON.stringify({ message: { content: names.map((name) => ({ type: "tool_use", name })) } })
@@ -68,7 +65,9 @@ test("a malformed line is skipped rather than throwing", () => {
 })
 
 test("countCalls only advances the cursor past complete lines", async (t) => {
-  const dir = await mkdtemp(join(SCRATCH, "tool-calls-"))
+  // Fixture transcripts live in a fresh OS temp dir, never a real agent's own directory —
+  // and never a path hardcoded to one machine, since this repo runs on more than one.
+  const dir = await mkdtemp(join(tmpdir(), "herdr-sidebar-"))
   t.after(() => rm(dir, { recursive: true, force: true }))
 
   const path = join(dir, "transcript.jsonl")

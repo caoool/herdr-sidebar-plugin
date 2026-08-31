@@ -10,8 +10,11 @@ const DASH = "—"
  * Glyphs carry the claim, so two agents saying different things cannot look alike by accident.
  * `enabled` reuses the filled dot because for Codex it is the best state available, and the
  * header count beside it is what says how many are in it.
+ *
+ * `unverified` has no entry: it claims nothing checkable, so it is rendered as the dim dash
+ * used for every other unknown value (see the loop below), never a glyph of its own.
  */
-const GLYPH: Record<McpStatus, string> = {
+const GLYPH: Record<Exclude<McpStatus, "unverified">, string> = {
   connected: "●",
   "needs-auth": "◐",
   failed: "✗",
@@ -70,9 +73,12 @@ export function toolsBlock(
     : [{ text: DASH, paint: muted }], width, style.bold))
   out.push("")
   for (const server of servers ?? []) {
-    const on = HEALTHY.includes(server.status)
-    const paint = style.mark ? (s: string) => style.mark!(s, on) : undefined
-    out.push(nameRow(server.name, [{ text: GLYPH[server.status], paint }], width, label))
+    const segment = server.status === "unverified"
+      ? { text: DASH, paint: muted }
+      : { text: GLYPH[server.status], paint: style.mark
+          ? (s: string) => style.mark!(s, HEALTHY.includes(server.status))
+          : undefined }
+    out.push(nameRow(server.name, [segment], width, label))
   }
 
   return out
