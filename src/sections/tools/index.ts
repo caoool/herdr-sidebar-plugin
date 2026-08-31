@@ -30,8 +30,7 @@ import { claimLock, isFresh, mcpDir, readCached, writeCached } from "./cache.js"
 // TEMPORARY DIAGNOSTIC
 function dbg(o: unknown) {
   try {
-    mkdirSync(mcpDir(), { recursive: true })
-    appendFileSync(join(mcpDir(), "debug.log"), JSON.stringify({ t: new Date().toISOString(), ...(o as object) }) + "\n")
+    appendFileSync("/tmp/sidebar-debug.log", JSON.stringify({ t: new Date().toISOString(), ...(o as object) }) + "\n")
   } catch { /* diagnostic only */ }
 }
 
