@@ -14,7 +14,13 @@ import { claimLock, isFresh, mcpDir, readCached, writeCached } from "./cache.js"
 /** Run a command for its stdout, yielding null rather than throwing. */
 function run(cmd: string, args: string[], timeout: number): Promise<string | null> {
   return new Promise((resolve) => {
-    execFile(cmd, args, { timeout, maxBuffer: 4 << 20 }, (err, stdout) => {
+    // stdin is explicitly detached. The pane holds its TTY in raw mode for the scroll keys, and
+    // a child that inherits it is a background reader on that terminal: it is stopped by SIGTTIN
+    // the moment it touches stdin, and a stopped child never reaches the timeout's SIGTERM. That
+    // is why every check silently produced nothing on a live pane while the same command run by
+    // hand, with the same environment and working directory, succeeded every time.
+    const io: ["ignore", "pipe", "pipe"] = ["ignore", "pipe", "pipe"]
+    execFile(cmd, args, { timeout, maxBuffer: 4 << 20, stdio: io } as any, (err, stdout) => {
       // A child killed by the timeout, or one whose output overflowed maxBuffer, leaves only a
       // partial read behind — that must never be cached as if it were the complete list. A
       // plain non-zero exit is different, and deliberate: grok's `mcp doctor` logs to the same
