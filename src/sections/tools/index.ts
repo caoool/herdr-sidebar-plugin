@@ -43,7 +43,7 @@ function run(cmd: string, args: string[], timeout: number): Promise<string | nul
   return new Promise((resolve) => {
     let child: ReturnType<typeof spawn>
     try {
-      child = spawn(cmd, args, { stdio: ["ignore", "pipe", "ignore"] })
+      child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] })
     } catch {
       return resolve(null)
     }
@@ -67,10 +67,12 @@ function run(cmd: string, args: string[], timeout: number): Promise<string | nul
       if (out.length < OUTPUT_CAP) out += String(d)
     })
     child.stdout?.on("error", () => {})
+    let errOut = ""
+    child.stderr?.on("data", (d: Buffer) => { if (errOut.length < 4000) errOut += String(d) })
     // A command that cannot be spawned at all — not on PATH, not executable.
     child.on("error", (e) => { dbg({ ev: "spawn-error", cmd, msg: String(e).slice(0,150) }); finish(null) })
     child.on("exit", (code) => {
-      dbg({ ev: "exit", cmd, code, outLen: out.length })
+      dbg({ ev: "exit", cmd, code, outLen: out.length, cwd: process.cwd(), stderr: errOut.slice(0, 600) })
       // Give the pipe a moment to deliver anything already written, then take what we have. A
       // non-zero exit still yields its output on purpose: grok's `mcp doctor` logs to stdout and
       // exits non-zero, and its JSON is perfectly usable.
