@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process"
+import { appendFileSync, mkdirSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import type { Section, SectionContext } from "../types.js"
@@ -29,7 +30,6 @@ import { claimLock, isFresh, mcpDir, readCached, writeCached } from "./cache.js"
 // TEMPORARY DIAGNOSTIC
 function dbg(o: unknown) {
   try {
-    const { appendFileSync, mkdirSync } = require("node:fs")
     mkdirSync(mcpDir(), { recursive: true })
     appendFileSync(join(mcpDir(), "debug.log"), JSON.stringify({ t: new Date().toISOString(), ...(o as object) }) + "\n")
   } catch { /* diagnostic only */ }
