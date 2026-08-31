@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process"
+import { spawn } from "node:child_process"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import type { Section, SectionContext } from "../types.js"
@@ -11,32 +11,61 @@ import { parseCodexMcp } from "./sources/codex.js"
 import { parseGrokMcp } from "./sources/grok.js"
 import { claimLock, isFresh, mcpDir, readCached, writeCached } from "./cache.js"
 
-/** Run a command for its stdout, yielding null rather than throwing. */
+/**
+ * Run a command for its stdout, yielding null rather than throwing.
+ *
+ * Deliberately `spawn` + the `exit` event rather than `execFile`. execFile's callback fires when
+ * the child's stdout reaches EOF, not when the child exits — and `claude mcp list` starts every
+ * configured stdio MCP server as a grandchild, each inheriting that same pipe. The child exits,
+ * the grandchildren keep the write end open, EOF never arrives, and the callback never runs. The
+ * timeout does not save it either: it kills the child, which was already gone. Live panes sat
+ * with a held lock and no reading for as long as they were open, while the identical command run
+ * by hand returned in nine seconds.
+ *
+ * `exit` fires when the child itself exits, whatever its descendants are still holding. stdin is
+ * detached because the pane keeps its TTY in raw mode for the scroll keys, and stderr is
+ * discarded so a chatty server cannot fill a buffer nobody reads.
+ */
+const OUTPUT_CAP = 4 << 20
+/** After the child exits, how long to keep draining stdout before giving up on the rest. */
+const DRAIN_MS = 250
+
 function run(cmd: string, args: string[], timeout: number): Promise<string | null> {
   return new Promise((resolve) => {
-    // stdin is explicitly detached. The pane holds its TTY in raw mode for the scroll keys, and
-    // a child that inherits it is a background reader on that terminal: it is stopped by SIGTTIN
-    // the moment it touches stdin, and a stopped child never reaches the timeout's SIGTERM. That
-    // is why every check silently produced nothing on a live pane while the same command run by
-    // hand, with the same environment and working directory, succeeded every time.
-    const io: ["ignore", "pipe", "pipe"] = ["ignore", "pipe", "pipe"]
-    execFile(cmd, args, { timeout, maxBuffer: 4 << 20, stdio: io } as any, (err, stdout) => {
-      // A child killed by the timeout, or one whose output overflowed maxBuffer, leaves only a
-      // partial read behind — that must never be cached as if it were the complete list. A
-      // plain non-zero exit is different, and deliberate: grok's `mcp doctor` logs to the same
-      // stream and exits non-zero, so stdout is still preferred over the error whenever the
-      // process actually ran to completion.
-      const incomplete = err?.killed || err?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
-      // TEMPORARY DIAGNOSTIC — remove once the live check is understood.
-      try {
-        const { appendFileSync, mkdirSync } = require("node:fs")
-        mkdirSync(mcpDir(), { recursive: true })
-        appendFileSync(join(mcpDir(), "debug.log"),
-          JSON.stringify({ t: new Date().toISOString(), cmd, args,
-            err: err ? { code: (err as any).code, killed: err.killed, msg: String(err.message).slice(0, 200) } : null,
-            outLen: stdout ? String(stdout).length : 0 }) + "\n")
-      } catch { /* diagnostic only */ }
-      resolve(incomplete ? null : stdout ? String(stdout) : err ? null : "")
+    let child: ReturnType<typeof spawn>
+    try {
+      child = spawn(cmd, args, { stdio: ["ignore", "pipe", "ignore"] })
+    } catch {
+      return resolve(null)
+    }
+
+    let out = ""
+    let settled = false
+    const finish = (value: string | null) => {
+      if (settled) return
+      settled = true
+      clearTimeout(killer)
+      resolve(value)
+    }
+
+    const killer = setTimeout(() => {
+      child.kill("SIGKILL")
+      finish(null)
+    }, timeout)
+
+    child.stdout?.on("data", (d: Buffer) => {
+      if (out.length < OUTPUT_CAP) out += String(d)
+    })
+    child.stdout?.on("error", () => {})
+    // A command that cannot be spawned at all — not on PATH, not executable.
+    child.on("error", () => finish(null))
+    child.on("exit", (code) => {
+      // Give the pipe a moment to deliver anything already written, then take what we have. A
+      // non-zero exit still yields its output on purpose: grok's `mcp doctor` logs to stdout and
+      // exits non-zero, and its JSON is perfectly usable.
+      const settle = () => finish(out || (code === 0 ? "" : null))
+      const drain = setTimeout(settle, DRAIN_MS)
+      child.stdout?.once("end", () => { clearTimeout(drain); settle() })
     })
   })
 }
