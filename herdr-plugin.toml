@@ -37,6 +37,11 @@ title = "sidebar: reinstall Claude quota collector"
 contexts = ["workspace"]
 command = ["node", "bin/install-collector.mjs"]
 
+[[actions]]
+id = "refresh-mcp"
+title = "Refresh MCP status"
+command = ["bash", "-c", "rm -f \"${HERDR_PLUGIN_STATE_DIR:-${SIDEBAR_STATE_DIR:-$HOME/.local/state/herdr/plugins/caoool.sidebar}}\"/mcp/*.json \"${HERDR_PLUGIN_STATE_DIR:-${SIDEBAR_STATE_DIR:-$HOME/.local/state/herdr/plugins/caoool.sidebar}}\"/mcp/*.lock"]
+
 # Auto-open when herdr detects an agent. The hook receives the DETECTED pane in
 # HERDR_PANE_ID (not the focused pane) — verified in src/app/api/plugins/context.rs.
 [[events]]
