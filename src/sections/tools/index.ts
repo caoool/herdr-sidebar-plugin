@@ -15,9 +15,13 @@ import { claimLock, isFresh, mcpDir, readCached, writeCached } from "./cache.js"
 function run(cmd: string, args: string[], timeout: number): Promise<string | null> {
   return new Promise((resolve) => {
     execFile(cmd, args, { timeout, maxBuffer: 4 << 20 }, (err, stdout) => {
-      // A non-zero exit still often carries usable output — grok's doctor logs to the same
-      // stream — so stdout is preferred over the error when there is any.
-      resolve(stdout ? String(stdout) : err ? null : "")
+      // A child killed by the timeout, or one whose output overflowed maxBuffer, leaves only a
+      // partial read behind — that must never be cached as if it were the complete list. A
+      // plain non-zero exit is different, and deliberate: grok's `mcp doctor` logs to the same
+      // stream and exits non-zero, so stdout is still preferred over the error whenever the
+      // process actually ran to completion.
+      const incomplete = err?.killed || err?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
+      resolve(incomplete ? null : stdout ? String(stdout) : err ? null : "")
     })
   })
 }
@@ -81,6 +85,7 @@ export function toolsSection(): Section {
 
       const cached = await readCached(agent)
       mcp = isFresh(cached, now, agent) ? cached : null
+      if (mcp && mcp.agent !== agent) mcp = null
 
       // Refresh in the background: a nine-second health check must never block a render.
       if (!mcp && !checking && (await claimLock(agent, now))) {

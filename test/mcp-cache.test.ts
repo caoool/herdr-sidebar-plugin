@@ -1,10 +1,30 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { isFresh, TTL } from "../src/sections/tools/cache.js"
+import { mkdtemp, rm } from "node:fs/promises"
+import { join } from "node:path"
+import { isFresh, TTL, claimLock, readCached, writeCached } from "../src/sections/tools/cache.js"
 import type { McpSnapshot } from "../src/sections/tools/types.js"
 
 const snap = (at: number): McpSnapshot => ({ agent: "claude", servers: [], observedAt: at })
 const NOW = 1_800_000_000_000
+
+// Fixture state dirs live under the session scratchpad, never the user's real state directory.
+const SCRATCH =
+  "/private/tmp/claude-501/-Users-lu-Developments-hobby-herdr-herdr-sidebar-plugin/d3d0ae62-2da6-4d51-970c-5d44f0b78af5/scratchpad"
+
+/** Run `fn` with HERDR_PLUGIN_STATE_DIR pointed at a fresh temp dir, then clean up. */
+async function withTempState(fn: () => Promise<void>): Promise<void> {
+  const dir = await mkdtemp(join(SCRATCH, "mcp-cache-"))
+  const prev = process.env.HERDR_PLUGIN_STATE_DIR
+  process.env.HERDR_PLUGIN_STATE_DIR = dir
+  try {
+    await fn()
+  } finally {
+    if (prev === undefined) delete process.env.HERDR_PLUGIN_STATE_DIR
+    else process.env.HERDR_PLUGIN_STATE_DIR = prev
+    await rm(dir, { recursive: true, force: true })
+  }
+}
 
 test("Claude's reading is trusted for fifteen minutes", () => {
   assert.equal(TTL.claude, 15 * 60_000)
@@ -30,4 +50,56 @@ test("a missing reading is not fresh", () => {
 test("a reading from the future is not trusted", () => {
   // Clock changes happen; a timestamp ahead of now means the arithmetic cannot be relied on.
   assert.ok(!isFresh(snap(NOW + 60_000), NOW, "claude"))
+})
+
+test("writeCached and readCached round-trip a snapshot", async () => {
+  await withTempState(async () => {
+    const written: McpSnapshot = {
+      agent: "codex",
+      servers: [{ name: "files", status: "enabled" }],
+      observedAt: NOW,
+    }
+    await writeCached(written)
+    const read = await readCached("codex")
+    assert.deepEqual(read, written)
+  })
+})
+
+test("readCached yields null when nothing has been written for that agent", async () => {
+  await withTempState(async () => {
+    assert.equal(await readCached("grok"), null)
+  })
+})
+
+// claimLock's own freshness check compares the passed `now` against the lock file's real
+// mtime (set by the OS when the file is written), so these tests use the real clock rather
+// than the arbitrary fixture NOW used above for isFresh.
+
+test("claimLock is exclusive: two concurrent claims cannot both succeed", async () => {
+  await withTempState(async () => {
+    const now = Date.now()
+    const [a, b] = await Promise.all([
+      claimLock("claude", now),
+      claimLock("claude", now),
+    ])
+    // Exactly one of the two racing claims wins.
+    assert.equal([a, b].filter(Boolean).length, 1)
+  })
+})
+
+test("claimLock refuses a second claim while the first is still fresh", async () => {
+  await withTempState(async () => {
+    const now = Date.now()
+    assert.equal(await claimLock("claude", now), true)
+    assert.equal(await claimLock("claude", now), false)
+  })
+})
+
+test("a stale lock is reclaimable", async () => {
+  await withTempState(async () => {
+    const now = Date.now()
+    assert.equal(await claimLock("claude", now), true)
+    // Well past LOCK_STALE (60s): the pane that held it is assumed dead.
+    assert.equal(await claimLock("claude", now + 5 * 60_000), true)
+  })
 })

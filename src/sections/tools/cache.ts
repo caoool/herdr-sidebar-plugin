@@ -1,4 +1,4 @@
-import { readFile, writeFile, rename, mkdir, stat } from "node:fs/promises"
+import { readFile, writeFile, rename, mkdir, stat, unlink } from "node:fs/promises"
 import { join } from "node:path"
 import { stateDir } from "../../herdr.js"
 import type { ProviderKind } from "../../types.js"
@@ -41,7 +41,13 @@ export async function readCached(agent: ProviderKind): Promise<McpSnapshot | nul
   try { return JSON.parse(text) as McpSnapshot } catch { return null }
 }
 
-/** Written via tmp + rename so a pane never reads a half-written list. */
+/**
+ * Written via tmp + rename so a pane never reads a half-written list.
+ *
+ * This mirrors the tmp+rename pattern in `src/cache.ts` — duplicated rather than shared because
+ * that one is keyed by an opaque cache name and this one by agent, but the reader should know
+ * the two are meant to stay in step.
+ */
 export async function writeCached(snap: McpSnapshot): Promise<void> {
   await mkdir(mcpDir(), { recursive: true }).catch(() => {})
   const target = join(mcpDir(), `${snap.agent}.json`)
@@ -61,7 +67,19 @@ export async function claimLock(agent: ProviderKind, now: number): Promise<boole
   await mkdir(mcpDir(), { recursive: true }).catch(() => {})
   const path = join(mcpDir(), `${agent}.lock`)
   const held = await stat(path).catch(() => null)
-  if (held && now - held.mtimeMs < LOCK_STALE) return false
-  await writeFile(path, String(process.pid)).catch(() => {})
-  return true
+  if (held) {
+    if (now - held.mtimeMs < LOCK_STALE) return false
+    // Stale: clear it before attempting the claim below. A lost race here — another pane
+    // unlinks and claims first — is fine; this pane just declines like any other contender.
+    await unlink(path).catch(() => {})
+  }
+  // `wx` fails with EEXIST when the file already exists, so a successful write *is* the claim —
+  // there is no separate check-then-write gap for two panes to both slip through.
+  try {
+    await writeFile(path, String(process.pid), { flag: "wx" })
+    return true
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") return false
+    return true
+  }
 }
