@@ -87,3 +87,43 @@ test("the blank-row-after-title convention matches the other sections", () => {
   const lines = toolsBlock(calls, mcp, "claude", 30, PLAIN)
   assert.equal(lines[1], "")
 })
+
+// A name long enough to fill the row on its own — both from real output. `labelled`'s gap
+// floors at 1, so an untruncated label this long would push the row past `width`.
+const LONG_TOOL = "playwright:browser_take_screenshot"
+const LONG_SERVER = "plugin:chrome-devtools-mcp:chrome-devtools"
+
+test("a tool name long enough to fill the row on its own still yields an exactly-width row", () => {
+  const longCall: ToolCall[] = [{ name: LONG_TOOL, count: 3 }]
+  const plain = toolsBlock(longCall, null, "claude", 30, PLAIN)
+  const styled = toolsBlock(longCall, null, "claude", 30, TERMINAL).map(strip)
+  assert.deepEqual(styled, plain)
+  const toolRow = plain[2] // TOOLS header, blank, then the one call row
+  assert.ok(toolRow.length > 0, "the call row is missing")
+  assert.equal(toolRow.length, 30)
+})
+
+test("an MCP server name long enough to fill the row on its own still yields an exactly-width row", () => {
+  const longMcp: McpSnapshot = {
+    agent: "claude", observedAt: Date.now(),
+    servers: [{ name: LONG_SERVER, status: "connected" }],
+  }
+  const plain = toolsBlock([], longMcp, "claude", 30, PLAIN)
+  const styled = toolsBlock([], longMcp, "claude", 30, TERMINAL).map(strip)
+  assert.deepEqual(styled, plain)
+  // TOOLS dash(0), blank(1), blank before MCP(2), MCP header(3), blank(4), the one server row(5)
+  const serverRow = plain[5]
+  assert.ok(serverRow.length > 0, "the server row is missing")
+  assert.equal(serverRow.length, 30)
+})
+
+test("a name that exactly fills the row is not needlessly truncated", () => {
+  // width 30, a single-digit count leaves a value of 1 char and a minimum 1-column gap, so
+  // the label budget is exactly 28 — a name of that length should survive whole, no ellipsis.
+  const name = "x".repeat(28)
+  const lines = toolsBlock([{ name, count: 7 }], null, "claude", 30, PLAIN)
+  const toolRow = lines[2]
+  assert.equal(toolRow.length, 30)
+  assert.ok(toolRow.startsWith(name), toolRow)
+  assert.ok(!toolRow.includes("…"), toolRow)
+})
