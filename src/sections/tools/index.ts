@@ -26,6 +26,15 @@ import { claimLock, isFresh, mcpDir, readCached, writeCached } from "./cache.js"
  * detached because the pane keeps its TTY in raw mode for the scroll keys, and stderr is
  * discarded so a chatty server cannot fill a buffer nobody reads.
  */
+// TEMPORARY DIAGNOSTIC
+function dbg(o: unknown) {
+  try {
+    const { appendFileSync, mkdirSync } = require("node:fs")
+    mkdirSync(mcpDir(), { recursive: true })
+    appendFileSync(join(mcpDir(), "debug.log"), JSON.stringify({ t: new Date().toISOString(), ...(o as object) }) + "\n")
+  } catch { /* diagnostic only */ }
+}
+
 const OUTPUT_CAP = 4 << 20
 /** After the child exits, how long to keep draining stdout before giving up on the rest. */
 const DRAIN_MS = 250
@@ -49,6 +58,7 @@ function run(cmd: string, args: string[], timeout: number): Promise<string | nul
     }
 
     const killer = setTimeout(() => {
+      dbg({ ev: "timeout", cmd })
       child.kill("SIGKILL")
       finish(null)
     }, timeout)
@@ -58,8 +68,9 @@ function run(cmd: string, args: string[], timeout: number): Promise<string | nul
     })
     child.stdout?.on("error", () => {})
     // A command that cannot be spawned at all — not on PATH, not executable.
-    child.on("error", () => finish(null))
+    child.on("error", (e) => { dbg({ ev: "spawn-error", cmd, msg: String(e).slice(0,150) }); finish(null) })
     child.on("exit", (code) => {
+      dbg({ ev: "exit", cmd, code, outLen: out.length })
       // Give the pipe a moment to deliver anything already written, then take what we have. A
       // non-zero exit still yields its output on purpose: grok's `mcp doctor` logs to stdout and
       // exits non-zero, and its JSON is perfectly usable.
@@ -132,13 +143,17 @@ export function toolsSection(): Section {
       if (mcp && mcp.agent !== agent) mcp = null
 
       // Refresh in the background: a nine-second health check must never block a render.
-      if (!mcp && !checking && (await claimLock(agent, now))) {
+      const claimed = !mcp && !checking ? await claimLock(agent, now) : false
+      dbg({ ev: "refresh", agent, hasMcp: !!mcp, checking, claimed })
+      if (claimed) {
         checking = true
         void check(agent)
           .then(async (servers) => {
+            dbg({ ev: "check-done", agent, servers: servers ? servers.length : null })
             if (servers) await writeCached({ agent, servers, observedAt: Date.now() })
+            dbg({ ev: "wrote", agent })
           })
-          .catch(() => {})
+          .catch((e) => dbg({ ev: "check-threw", agent, msg: String(e).slice(0,200) }))
           .finally(() => { checking = false })
       }
     },
