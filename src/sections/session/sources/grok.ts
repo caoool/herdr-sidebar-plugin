@@ -29,7 +29,7 @@ const UPDATES_TAIL = 1024 * 1024
  * (which has its own rules for long or non-ASCII paths), the id is searched for directly; there
  * are few enough cwd buckets that this is cheaper than getting the encoding subtly wrong.
  */
-async function sessionDir(sessionId: string): Promise<string | null> {
+export async function sessionDir(sessionId: string): Promise<string | null> {
   for (const bucket of await readdir(SESSIONS, { withFileTypes: true }).catch(() => [])) {
     if (!bucket.isDirectory()) continue
     const candidate = join(SESSIONS, bucket.name, sessionId)

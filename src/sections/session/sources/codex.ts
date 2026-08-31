@@ -18,7 +18,7 @@ const ROOT = join(homedir(), ".codex", "sessions")
  * The rollout filename carries the session uuid, so the pane's own session is addressed
  * directly rather than guessed from mtime.
  */
-async function rolloutFor(sessionId: string): Promise<string | null> {
+export async function rolloutFor(sessionId: string): Promise<string | null> {
   const stack = [ROOT]
   let best: { path: string; mtime: number } | null = null
   while (stack.length) {
