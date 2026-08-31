@@ -15,6 +15,15 @@ export type Section = {
   id: string
 
   /**
+   * Render into the pane's scroll region rather than the pinned block.
+   *
+   * At most one section is scrollable. Everything else renders whole and stays put, so the
+   * readings you glance at — quota, context, speed — never scroll out of view while you are
+   * reading a long list.
+   */
+  scrollable?: boolean
+
+  /**
    * Files and directories whose changes should trigger a refresh. Missing paths are fine —
    * an agent that has never run leaves nothing behind, and the pane's slow tick covers a
    * directory that appears later.

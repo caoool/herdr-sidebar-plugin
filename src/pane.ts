@@ -24,11 +24,18 @@ import { quotaSection } from "./sections/quota/index.js"
 import { sessionSection } from "./sections/session/index.js"
 import type { Section } from "./sections/types.js"
 import type { PaneAgent } from "./types.js"
+import { compose } from "./layout.js"
 
 const SECTIONS: Section[] = [quotaSection(), sessionSection()]
 
 let subject: PaneAgent | null = null
 let dirty = true
+let offset = 0
+/**
+ * Reset the scroll when the pane changes agent — the list underneath is a different session's,
+ * so an offset carried over from the last one points at nothing meaningful.
+ */
+let scrolledFor: string | null = null
 
 /**
  * Exit code asking bin/pane.sh to relaunch us. See that file for why this exists: herdr never
@@ -82,6 +89,11 @@ async function refresh() {
   if (dismisser.ready(now)) return dismiss()
   // Keep the previous subject when the snapshot comes back empty, rather than blanking.
   subject = resolveSubject(agents, selfTabId(), subject)
+  const key = subject ? `${subject.agent}:${subject.sessionId}` : null
+  if (key !== scrolledFor) {
+    offset = 0
+    scrolledFor = key
+  }
   await Promise.all(SECTIONS.map((s) => s.refresh({ subject }).catch(() => {})))
   dirty = true
 }
@@ -90,13 +102,22 @@ function render() {
   if (!dirty) return
   dirty = false
   const width = Math.max(18, (process.stdout.columns ?? 34) - 4)
-  const out: string[] = []
+  const height = Math.max(1, (process.stdout.rows ?? 40) - 2)
+
+  const pinned: string[] = []
+  const scroll: string[] = []
   for (const section of SECTIONS) {
     const lines = section.render(width, TERMINAL)
     if (!lines.length) continue
-    if (out.length) out.push("")
-    out.push(...lines)
+    const into = section.scrollable ? scroll : pinned
+    if (into.length) into.push("")
+    into.push(...lines)
   }
+  if (pinned.length && scroll.length) pinned.push("")
+
+  const composed = compose(pinned, scroll, height, width, offset, TERMINAL)
+  offset = composed.offset
+  const out = composed.lines
   process.stdout.write("\x1b[2J\x1b[H\n" + out.map((l) => (l ? `  ${l}` : l)).join("\n") + "\n")
 }
 
@@ -115,5 +136,36 @@ for (const target of new Set(SECTIONS.flatMap((s) => s.watch()))) {
 // platform without recursive watching, and a change of subject when focus moves.
 setInterval(() => refresh().then(render), 5000)
 process.stdout.on("resize", () => { dirty = true; render() })
+
+/**
+ * Scroll keys.
+ *
+ * PageUp and PageDown are deliberately absent: herdr binds them for its own scrollback and they
+ * never reach this process — verified by sending all three to a live pane and seeing only the
+ * arrow and the letter arrive.
+ *
+ * Raw mode turns off the terminal's own Ctrl-C handling, so it is handled here explicitly;
+ * without this the sidebar could not be interrupted from its own pane.
+ */
+function onKey(chunk: Buffer) {
+  const key = chunk.toString("utf8")
+  if (key === "\x03") return process.exit(0)
+  if (key === "\x1b[A" || key === "k") offset -= 1
+  else if (key === "\x1b[B" || key === "j") offset += 1
+  else if (key === "g") offset = 0
+  else if (key === "G") offset = Number.MAX_SAFE_INTEGER
+  else return
+  dirty = true
+  render()
+}
+
+if (process.stdin.isTTY) {
+  process.stdin.setRawMode(true)
+  process.stdin.resume()
+  process.stdin.on("data", onKey)
+  // Leaving a terminal in raw mode would corrupt whatever herdr draws in this pane next.
+  process.on("exit", () => { try { process.stdin.setRawMode(false) } catch { /* already gone */ } })
+}
+
 claimLabel()
 refresh().then(render)
