@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process"
-import { appendFileSync, mkdirSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import type { Section, SectionContext } from "../types.js"
@@ -26,14 +25,15 @@ import { claimLock, isFresh, mcpDir, readCached, writeCached } from "./cache.js"
  * `exit` fires when the child itself exits, whatever its descendants are still holding. stdin is
  * detached because the pane keeps its TTY in raw mode for the scroll keys, and stderr is
  * discarded so a chatty server cannot fill a buffer nobody reads.
+ *
+ * The working directory is set explicitly, and that is not incidental. herdr launches a pane in
+ * the plugin checkout it was installed from, and every later reinstall deletes that directory —
+ * so a long-lived sidebar ends up running with a working directory that no longer exists. Both
+ * `claude` and `grok` refuse to start at all in that state ("The current working directory was
+ * deleted"), exiting non-zero within milliseconds, which made every check fail on exactly the
+ * panes that had been open longest while the same command by hand always worked. The home
+ * directory always exists, and these lists are user-scoped anyway.
  */
-// TEMPORARY DIAGNOSTIC
-function dbg(o: unknown) {
-  try {
-    appendFileSync("/tmp/sidebar-debug.log", JSON.stringify({ t: new Date().toISOString(), ...(o as object) }) + "\n")
-  } catch { /* diagnostic only */ }
-}
-
 const OUTPUT_CAP = 4 << 20
 /** After the child exits, how long to keep draining stdout before giving up on the rest. */
 const DRAIN_MS = 250
@@ -42,7 +42,7 @@ function run(cmd: string, args: string[], timeout: number): Promise<string | nul
   return new Promise((resolve) => {
     let child: ReturnType<typeof spawn>
     try {
-      child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] })
+      child = spawn(cmd, args, { cwd: homedir(), stdio: ["ignore", "pipe", "ignore"] })
     } catch {
       return resolve(null)
     }
@@ -57,7 +57,6 @@ function run(cmd: string, args: string[], timeout: number): Promise<string | nul
     }
 
     const killer = setTimeout(() => {
-      dbg({ ev: "timeout", cmd })
       child.kill("SIGKILL")
       finish(null)
     }, timeout)
@@ -66,12 +65,9 @@ function run(cmd: string, args: string[], timeout: number): Promise<string | nul
       if (out.length < OUTPUT_CAP) out += String(d)
     })
     child.stdout?.on("error", () => {})
-    let errOut = ""
-    child.stderr?.on("data", (d: Buffer) => { if (errOut.length < 4000) errOut += String(d) })
     // A command that cannot be spawned at all — not on PATH, not executable.
-    child.on("error", (e) => { dbg({ ev: "spawn-error", cmd, msg: String(e).slice(0,150) }); finish(null) })
+    child.on("error", () => finish(null))
     child.on("exit", (code) => {
-      dbg({ ev: "exit", cmd, code, outLen: out.length, cwd: process.cwd(), stderr: errOut.slice(0, 600) })
       // Give the pipe a moment to deliver anything already written, then take what we have. A
       // non-zero exit still yields its output on purpose: grok's `mcp doctor` logs to stdout and
       // exits non-zero, and its JSON is perfectly usable.
@@ -144,17 +140,14 @@ export function toolsSection(): Section {
       if (mcp && mcp.agent !== agent) mcp = null
 
       // Refresh in the background: a nine-second health check must never block a render.
-      const claimed = !mcp && !checking ? await claimLock(agent, now) : false
-      dbg({ ev: "refresh", agent, hasMcp: !!mcp, checking, claimed })
-      if (claimed) {
+      // Refresh in the background: a nine-second health check must never block a render.
+      if (!mcp && !checking && (await claimLock(agent, now))) {
         checking = true
         void check(agent)
           .then(async (servers) => {
-            dbg({ ev: "check-done", agent, servers: servers ? servers.length : null })
             if (servers) await writeCached({ agent, servers, observedAt: Date.now() })
-            dbg({ ev: "wrote", agent })
           })
-          .catch((e) => dbg({ ev: "check-threw", agent, msg: String(e).slice(0,200) }))
+          .catch(() => {})
           .finally(() => { checking = false })
       }
     },
