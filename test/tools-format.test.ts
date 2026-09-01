@@ -26,7 +26,8 @@ const mcp: McpSnapshot = {
 test("the header counts total calls, not distinct tools", () => {
   const lines = toolsBlock(calls, mcp, "claude", 30, PLAIN)
   assert.ok(lines[0].startsWith("TOOLS"))
-  assert.ok(lines[0].endsWith("39 calls"), lines[0])
+  assert.ok(lines[0].endsWith("39"), lines[0])
+  assert.ok(!lines[0].includes("calls"), "the bare figure, like MCP's")
 })
 
 test("every tool is listed — there is no top-N cut", () => {

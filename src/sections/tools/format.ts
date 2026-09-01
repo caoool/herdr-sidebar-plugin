@@ -57,7 +57,9 @@ export function toolsHead(calls: ToolCall[], width: number, style: Style): strin
   const muted = style.muted ?? ((s: string) => s)
   const total = calls.reduce((n, c) => n + c.count, 0)
   return [
-    labelled("TOOLS", total ? [{ text: `${total} calls` }] : [{ text: DASH, paint: muted }],
+    // The bare count, like MCP's. "calls" said what the rows beneath it already say, and cost
+    // columns the numbers could use.
+    labelled("TOOLS", total ? [{ text: String(total) }] : [{ text: DASH, paint: muted }],
       width, style.bold),
     "",
   ]
@@ -97,47 +99,16 @@ export function mcpItems(mcp: McpSnapshot | null, width: number, style: Style): 
   })
 }
 
+/** The TOOLS block whole, for callers that do not scroll its parts separately. */
 export function toolsRows(calls: ToolCall[], width: number, style: Style): string[] {
-  const muted = style.muted ?? ((s: string) => s)
-  const label = style.label ?? ((s: string) => s)
-  const total = calls.reduce((n, c) => n + c.count, 0)
-  const out = [
-    labelled("TOOLS", total ? [{ text: `${total} calls` }] : [{ text: DASH, paint: muted }],
-      width, style.bold),
-    "",
-  ]
-  for (const call of calls) {
-    out.push(nameRow(call.name, [{ text: String(call.count) }], width, label))
-  }
-  return out
+  return [...toolsHead(calls, width, style), ...toolItems(calls, width, style)]
 }
 
-/** The MCP block: a heading carrying healthy-over-total, then one row per server. */
+/** The MCP block whole, for callers that do not scroll its parts separately. */
 export function mcpRows(mcp: McpSnapshot | null, width: number, style: Style): string[] {
-  const muted = style.muted ?? ((s: string) => s)
-  const label = style.label ?? ((s: string) => s)
-  const servers = mcp?.servers ?? null
-  const healthy = servers?.filter((s) => HEALTHY.includes(s.status)).length ?? 0
-  const out = [
-    labelled("MCP", servers && servers.length
-      ? [{ text: `${healthy}/${servers.length}` }]
-      : [{ text: DASH, paint: muted }], width, style.bold),
-    "",
-  ]
-  for (const server of servers ?? []) {
-    // `unverified` earns no glyph on purpose: the line parsed but its status word did not, and a
-    // glyph would assert a state nothing checked.
-    const segment: Segment = server.status === "unverified"
-      ? { text: DASH, paint: muted }
-      : { text: GLYPH[server.status], paint: style.mark
-          ? (s: string) => style.mark!(s, HEALTHY.includes(server.status))
-          : undefined }
-    out.push(nameRow(server.name, [segment], width, label))
-  }
-  return out
+  return [...mcpHead(mcp, width, style), ...mcpItems(mcp, width, style)]
 }
 
-/** Both blocks stacked, for callers that do not scroll them separately. */
 export function toolsBlock(
   calls: ToolCall[],
   mcp: McpSnapshot | null,
