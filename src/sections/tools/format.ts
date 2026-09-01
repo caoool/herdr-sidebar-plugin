@@ -1,4 +1,5 @@
 import { labelled, truncate } from "../session/format.js"
+import { displayWidth } from "../../width.js"
 import type { Segment } from "../session/format.js"
 import type { Style } from "../../ansi.js"
 import type { ProviderKind } from "../../types.js"
@@ -41,7 +42,7 @@ function nameRow(
   paintLabel: (s: string) => string,
 ): string {
   const plain = segments.map((s) => s.text).join("")
-  const maxLabel = Math.max(1, width - plain.length - 1)
+  const maxLabel = Math.max(1, width - displayWidth(plain) - 1)
   return labelled(truncate(name, maxLabel), segments, width, paintLabel)
 }
 

@@ -1,4 +1,5 @@
 import { window } from "./viewport.js"
+import { displayWidth } from "./width.js"
 import type { Style } from "./ansi.js"
 
 /**
@@ -56,8 +57,8 @@ export function compose(
 
   // Clamp divider to width: if tag doesn't fit, show just dashes
   let divider: string
-  if (tag && tag.length + 2 <= width) {
-    const rule = "─".repeat(width - tag.length - 2)
+  if (tag && displayWidth(tag) + 2 <= width) {
+    const rule = "─".repeat(width - displayWidth(tag) - 2)
     divider = dim(rule) + " " + dim(tag) + dim(" ")
   } else {
     divider = dim("─".repeat(width))

@@ -1,4 +1,5 @@
 import type { Style } from "../../ansi.js"
+import { displayWidth, truncateToWidth } from "../../width.js"
 import type { ProjectInfo, SessionInfo } from "./types.js"
 
 const DASH = "—"
@@ -42,8 +43,7 @@ export function abbreviate(n: number): string {
  * off the row. The tail is dropped because session titles put their distinguishing words first.
  */
 export function truncate(text: string, max: number): string {
-  if (max <= 1) return text.slice(0, Math.max(0, max))
-  return text.length <= max ? text : text.slice(0, max - 1).trimEnd() + "…"
+  return truncateToWidth(text, max)
 }
 
 /**
@@ -53,16 +53,44 @@ export function truncate(text: string, max: number): string {
  */
 export type Segment = { text: string; paint?: (s: string) => string }
 
-/** A fixed label on the left, the value flush right. */
+/**
+ * A fixed label on the left, the value flush right.
+ *
+ * The row is guaranteed to fit `width` columns. That guarantee lives here rather than at each
+ * call site because a single row over budget wraps, and a wrapped row pushes the whole frame
+ * past the pane's height — the terminal then scrolls, the sidebar appears to scroll as a whole,
+ * and the previous frame's headings linger above the current one. Every caller inherits the fix.
+ *
+ * When the value cannot fit, the value gives way rather than the label: the label says what the
+ * row is, and a row whose label has been eaten says nothing at all. Painting is preserved across
+ * the cut, so a truncated value keeps the colour of the segment it came from.
+ */
 export function labelled(
   label: string,
   segments: Segment[],
   width: number,
   paintLabel: (s: string) => string = (s) => s,
 ): string {
-  const plain = segments.map((s) => s.text).join("")
-  const gap = Math.max(1, width - label.length - plain.length)
-  const painted = segments.map((s) => (s.paint ? s.paint(s.text) : s.text)).join("")
+  const room = Math.max(0, width - displayWidth(label) - 1)
+
+  let budget = room
+  const fitted: Segment[] = []
+  for (const segment of segments) {
+    if (budget <= 0) break
+    const w = displayWidth(segment.text)
+    if (w <= budget) {
+      fitted.push(segment)
+      budget -= w
+      continue
+    }
+    const cut = truncateToWidth(segment.text, budget)
+    if (cut) fitted.push({ ...segment, text: cut })
+    budget = 0
+  }
+
+  const plain = fitted.map((s) => s.text).join("")
+  const gap = Math.max(1, width - displayWidth(label) - displayWidth(plain))
+  const painted = fitted.map((s) => (s.paint ? s.paint(s.text) : s.text)).join("")
   return paintLabel(label) + " ".repeat(gap) + painted
 }
 

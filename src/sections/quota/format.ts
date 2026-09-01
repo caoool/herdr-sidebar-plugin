@@ -1,6 +1,7 @@
 import type { QuotaSnapshot, QuotaWindow } from "./types.js"
 import type { ProviderKind } from "../../types.js"
 import type { Style } from "../../ansi.js"
+import { displayWidth } from "../../width.js"
 
 /** A window of a day or more is reported in days remaining rather than a clock time. */
 const MULTI_DAY_MINUTES = 1440
@@ -69,7 +70,7 @@ export function row(
   const right = isDerivedReset(win, now) ? "" : resetText(win, now)
   // Padding is computed from PLAIN widths. Escape sequences occupy no columns, so measuring
   // the painted string would push every coloured row out of alignment.
-  const gap = Math.max(1, width - label.length - 1 - pct.length - right.length)
+  const gap = Math.max(1, width - displayWidth(label) - 1 - displayWidth(pct) - displayWidth(right))
   const line = `${label} ${paint(pct, win.percent)}` + " ".repeat(gap) + right
   return right ? line : line.trimEnd()
 }
@@ -100,7 +101,7 @@ export function block(
   const heading = (style.label ?? style.bold)(name)
   if (!snap || snap.windows.length === 0) {
     // Gap measured from the plain name, for the same reason as in row().
-    const empty = heading + " ".repeat(Math.max(1, width - name.length - 1)) + "\u2014"
+    const empty = heading + " ".repeat(Math.max(1, width - displayWidth(name) - 1)) + "\u2014"
     return [finish(empty)]
   }
   return [
