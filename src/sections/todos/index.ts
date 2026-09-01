@@ -4,7 +4,9 @@ import type { Section, SectionContext } from "../types.js"
 import type { TodoSnapshot } from "./types.js"
 import { todoItems, todosBlock, todosHead } from "./format.js"
 import { CLAUDE_TASKS, readClaudeTodos } from "./sources/claude.js"
+import { CODEX_SESSIONS } from "../quota/sources/codex.js"
 import { GROK_SESSIONS, readGrokTodos } from "./sources/grok.js"
+import { readCodexTodos } from "./sources/codex.js"
 
 /** Items shown before the rest becomes scrollable, matching the TOOLS and MCP regions. */
 const VISIBLE = 5
@@ -14,9 +16,10 @@ const VISIBLE = 5
  *
  * Only two of the three agents keep one. Claude writes a file per task under
  * `~/.claude/tasks/<session>/`; Grok re-emits its whole plan into `updates.jsonl` whenever it
- * changes. Codex has no equivalent — `update_plan` appears in its rollouts only as prose, never
- * as a call — so a Codex pane shows a dash rather than an empty list, which would read as "all
- * done".
+ * changes. Codex calls an `update_plan` tool whose arguments carry the whole plan; that tool is
+ * configurable (`[tools] update_plan`) and had never been called on the machine this was written
+ * against, so a Codex pane shows a dash until it is used — a dash rather than an empty list,
+ * which would read as "all done".
  *
  * The list is never re-sorted. The order is the agent's own and carries meaning.
  */
@@ -28,7 +31,7 @@ export function todosSection(): Section {
     id: "todos",
     scrollable: true,
 
-    watch: () => [CLAUDE_TASKS, GROK_SESSIONS],
+    watch: () => [CLAUDE_TASKS, GROK_SESSIONS, CODEX_SESSIONS],
 
     async refresh(ctx) {
       subject = ctx.subject
@@ -40,7 +43,7 @@ export function todosSection(): Section {
       const todos =
         agent === "claude" ? await readClaudeTodos(sessionId).catch(() => null)
         : agent === "grok" ? await readGrokTodos(sessionId).catch(() => null)
-        : null
+        : await readCodexTodos(sessionId).catch(() => null)
       snapshot = todos ? { agent, todos, observedAt: Date.now() } : null
     },
 

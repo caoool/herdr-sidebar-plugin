@@ -2,6 +2,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { orderTasks, toTodo } from "../src/sections/todos/sources/claude.js"
 import { newestPlan } from "../src/sections/todos/sources/grok.js"
+import { newestPlan as codexNewestPlan } from "../src/sections/todos/sources/codex.js"
 import { todosBlock, todoItems, todosHead } from "../src/sections/todos/format.js"
 import { PLAIN, TERMINAL } from "../src/ansi.js"
 import { displayWidth } from "../src/width.js"
@@ -136,4 +137,69 @@ test("a plan far behind the tail window is still found, once", () => {
     if (plan) found = plan
   }
   assert.deepEqual(found, [{ text: "early", status: "completed" }])
+})
+
+// --- Codex ---------------------------------------------------------------------------------
+// Written from the tool's own published shape, quoted verbatim from the codex binary:
+// "Updates the task plan. Provide an optional explanation and a list of plan items, each with a
+// step and status. At most one step can be in_progress at a time."
+
+const codexCall = (plan: unknown, type = "function_call") =>
+  JSON.stringify({ payload: { type, name: "update_plan", arguments: JSON.stringify({
+    explanation: "why", plan,
+  }) } })
+
+test("Codex's plan comes from an update_plan call's arguments", () => {
+  const lines = [codexCall([
+    { step: "Read the spec", status: "completed" },
+    { step: "Write the reader", status: "in_progress" },
+    { step: "Ship it", status: "pending" },
+  ])]
+  assert.deepEqual(codexNewestPlan(lines), [
+    { text: "Read the spec", status: "completed" },
+    { text: "Write the reader", status: "in_progress" },
+    { text: "Ship it", status: "pending" },
+  ])
+})
+
+test("a later Codex plan replaces the earlier one wholesale", () => {
+  const lines = [
+    codexCall([{ step: "old", status: "pending" }]),
+    codexCall([{ step: "new", status: "in_progress" }]),
+  ]
+  assert.deepEqual(codexNewestPlan(lines), [{ text: "new", status: "in_progress" }])
+})
+
+test("arguments already parsed into an object are accepted too", () => {
+  // Rollouts have carried arguments as a JSON string; an object costs nothing to support and
+  // means a format change does not silently blank the section.
+  const line = JSON.stringify({ payload: {
+    type: "function_call", name: "update_plan",
+    arguments: { plan: [{ step: "inline", status: "pending" }] },
+  } })
+  assert.deepEqual(codexNewestPlan([line]), [{ text: "inline", status: "pending" }])
+})
+
+test("other Codex tool calls are not mistaken for a plan", () => {
+  const exec = JSON.stringify({ payload: { type: "custom_tool_call", name: "exec", arguments: "{}" } })
+  assert.equal(codexNewestPlan([exec]), null)
+})
+
+test("an unrecognised Codex status is dropped rather than guessed at", () => {
+  const lines = [codexCall([
+    { step: "good", status: "completed" },
+    { step: "bad", status: "wat" },
+  ])]
+  assert.deepEqual(codexNewestPlan(lines), [{ text: "good", status: "completed" }])
+})
+
+test("a plan call with nothing usable yields null, not an empty finished list", () => {
+  assert.equal(codexNewestPlan([codexCall([])]), null)
+  assert.equal(codexNewestPlan([codexCall("not an array")]), null)
+  assert.equal(codexNewestPlan(['{"payload":{"type":"function_call","name":"update_plan"}}']), null)
+})
+
+test("malformed Codex arguments are skipped without throwing", () => {
+  const bad = JSON.stringify({ payload: { type: "function_call", name: "update_plan", arguments: "{oops" } })
+  assert.equal(codexNewestPlan([bad]), null)
 })
