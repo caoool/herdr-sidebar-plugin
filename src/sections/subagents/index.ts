@@ -1,5 +1,6 @@
 import { homedir } from "node:os"
 import { join } from "node:path"
+import { VISIBLE } from "../types.js"
 import type { Section, SectionContext } from "../types.js"
 import type { Subagent, SubagentSnapshot } from "./types.js"
 import { subagentItems, subagentsBlock, subagentsHead } from "./format.js"
@@ -9,8 +10,6 @@ import { readGrokSubagents } from "./sources/grok.js"
 import { transcriptFor } from "../tools/sources/calls.js"
 import { sessionDir } from "../session/sources/grok.js"
 
-/** Items shown before the rest becomes scrollable, matching the other regions. */
-const VISIBLE = 5
 
 /**
  * The subagents this session has in flight.

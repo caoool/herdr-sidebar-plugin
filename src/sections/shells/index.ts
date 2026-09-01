@@ -1,5 +1,6 @@
 import { homedir } from "node:os"
 import { join } from "node:path"
+import { VISIBLE } from "../types.js"
 import type { Section, SectionContext } from "../types.js"
 import type { ShellSnapshot } from "./types.js"
 import { shellItems, shellsBlock, shellsHead } from "./format.js"
@@ -9,8 +10,6 @@ import { readGrokShells } from "./sources/grok.js"
 import { rolloutFor } from "../session/sources/codex.js"
 import { sessionDir } from "../session/sources/grok.js"
 
-/** Items shown before the rest becomes scrollable, matching the other regions. */
-const VISIBLE = 5
 
 /**
  * What this session is running right now: background shells, and the monitors watching them.

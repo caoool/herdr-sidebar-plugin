@@ -12,6 +12,14 @@ import type { Region } from "../layout.js"
  * Sections are deliberately pull-free where the agents allow it: `watch()` names the files
  * the agents already write, and the pane re-reads only when one of them changes.
  */
+/**
+ * Items a scrollable region shows before the rest has to be scrolled to.
+ *
+ * Shared rather than repeated per section: the number is a property of the sidebar's shape, not
+ * of any one list, and four copies of it would drift the first time one was tuned.
+ */
+export const VISIBLE = 5
+
 export type Section = {
   id: string
 

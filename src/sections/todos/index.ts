@@ -1,5 +1,6 @@
 import { homedir } from "node:os"
 import { join } from "node:path"
+import { VISIBLE } from "../types.js"
 import type { Section, SectionContext } from "../types.js"
 import type { TodoSnapshot } from "./types.js"
 import { todoItems, todosBlock, todosHead } from "./format.js"
@@ -8,8 +9,6 @@ import { CODEX_SESSIONS } from "../quota/sources/codex.js"
 import { GROK_SESSIONS, readGrokTodos } from "./sources/grok.js"
 import { readCodexTodos } from "./sources/codex.js"
 
-/** Items shown before the rest becomes scrollable, matching the TOOLS and MCP regions. */
-const VISIBLE = 5
 
 /**
  * The agent's own task list for this session.

@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process"
 import { homedir } from "node:os"
 import { join } from "node:path"
+import { VISIBLE } from "../types.js"
 import type { Section, SectionContext } from "../types.js"
 import type { ProviderKind } from "../../types.js"
 import type { McpServer, McpSnapshot, ToolCall } from "./types.js"
@@ -104,8 +105,6 @@ async function check(agent: ProviderKind): Promise<McpServer[] | null> {
  * shown. The section is scrollable because the lists are unbounded — thirteen servers and two
  * dozen tools is ordinary — while quota and context above it must stay in view.
  */
-/** Items shown per region before the rest becomes scrollable. */
-const VISIBLE = 5
 
 export function toolsSection(): Section {
   let calls: ToolCall[] = []
