@@ -91,7 +91,11 @@ export async function sessionPidFor(sessionId: string): Promise<number | null> {
 export async function readClaudeShells(sessionId: string): Promise<Shell[]> {
   const pid = await sessionPidFor(sessionId)
   if (pid === null) return []
-  const { stdout } = await run("ps", ["-Ao", "pid,ppid,args"], {
+    // -ww is not optional: ps truncates the args column to the terminal width, and this runs
+  // inside a 34-column sidebar. Without it every command is cut off long before the snapshot
+  // path that identifies it, so the filter matches nothing and the section reports no shells
+  // while shells are plainly running — which is exactly what it did.
+  const { stdout } = await run("ps", ["-Awwo", "pid,ppid,args"], {
     cwd: SAFE_CWD,
     timeout: 5_000,
     maxBuffer: 8 << 20,
