@@ -77,12 +77,14 @@ test("an out-of-range offset clamps and is returned for the caller to store", ()
   assert.ok(offsets[0] < 999)
 })
 
-test("the focused region's marker is distinguishable from the unfocused one", () => {
+test("focus does not change how a region is drawn", () => {
+  // The wheel targets whatever the pointer is over, so a highlight would mark a distinction the
+  // reader never has to think about — and a brightened count reads as if the number meant more.
   const style = { bold: (s: string) => `\x1b[1m${s}\x1b[0m`, paint: (t: string) => t,
                   muted: (s: string) => `\x1b[2m${s}\x1b[0m` }
   const first = compose(rows("p", 2), [region("t", 60), region("m", 60)], 24, 20, [0, 0], 0, style)
   const second = compose(rows("p", 2), [region("t", 60), region("m", 60)], 24, 20, [0, 0], 1, style)
-  assert.notDeepEqual(first.lines, second.lines, "moving focus changes which marker is bright")
+  assert.deepEqual(first.lines, second.lines)
 })
 
 test("a short pane sacrifices pinned rows rather than the regions", () => {

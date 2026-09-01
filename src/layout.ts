@@ -137,10 +137,13 @@ export function compose(
 
     // The count alone, flush right like every value in the sidebar. A rule across the pane drew
     // a line between two blocks that already read as separate, and competed with the figures.
+    //
+    // The focused region is not highlighted. It was, briefly, so you could see which list the
+    // keys would drive — but the wheel already targets whatever the pointer is over, so the
+    // highlight marked a distinction the reader no longer has to think about, and a brightened
+    // count read as if the number itself meant something.
     const tag = marker(w.above, w.below)
-    // The focused region's marker is bright so you can see which one the keys are driving.
-    const paint = i === focus ? bold : dim
-    lines.push(tag ? " ".repeat(Math.max(0, width - displayWidth(tag))) + paint(tag) : "")
+    lines.push(tag ? " ".repeat(Math.max(0, width - displayWidth(tag))) + dim(tag) : "")
     spans.push({ start, end: lines.length - 1 })
   })
 
