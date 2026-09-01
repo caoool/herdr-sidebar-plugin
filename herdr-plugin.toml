@@ -1,10 +1,10 @@
 id = "caoool.sidebar"
 name = "Sidebar"
-version = "0.1.0"
+version = "0.2.0"
 # 0.8.0 is the oldest verified release: pane.agent_detected is in PLUGIN_HOOK_EVENT_KINDS
 # and `plugin pane open --placement split --direction right` exists there.
 min_herdr_version = "0.8.0"
-description = "Right-hand sidebar for herdr. Sections: subscription quota (MCP status and tasks to follow)."
+description = "Right-hand sidebar for herdr: subscription quota, session, tools and MCP, task list, background shells and subagents."
 platforms = ["macos", "linux"]
 
 [[build]]
