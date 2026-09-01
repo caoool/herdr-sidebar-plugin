@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { claudeDir } from "../../quota/sources/claude.js"
+import { displayName, readFromTranscript } from "./claude-transcript.js"
 import { permissionFromScreen, sandboxFromSettings } from "./claude-live.js"
 import { outputSpeed } from "./claude-speed.js"
 import { effortPreset } from "./claude-effort.js"
@@ -18,11 +19,50 @@ import type { SessionInfo } from "../types.js"
  * rather than guessed.
  */
 
+/**
+ * The session block without a status line.
+ *
+ * Same fields, different sources: the model, effort and token usage come from the transcript,
+ * the name from the file Claude keeps per process, the permission mode from the screen as
+ * before. Only the context window's *size* is not recorded anywhere, so it is derived from the
+ * model — and when the model is unrecognised the percentage is left null rather than divided by
+ * a guess.
+ */
+async function fromTranscript(sessionId: string, paneId?: string): Promise<SessionInfo | null> {
+  const t = await readFromTranscript(sessionId).catch(() => null)
+  if (!t) return null
+
+  const permissionMode = (paneId ? await permissionFromScreen(paneId).catch(() => null) : null) ?? null
+  const usedPercent =
+    t.usedTokens !== null && t.windowSize
+      ? Math.round((t.usedTokens / t.windowSize) * 100)
+      : null
+
+  return {
+    agent: "claude",
+    sessionId,
+    name: t.name,
+    model: cleanModelName(displayName(t.model)),
+    effort: (await effortPreset(t.transcriptPath, sessionId, t.effort).catch(() => null)) ?? t.effort,
+    permissionMode,
+    permissionModeIsGlobal: false,
+    sandboxEnabled: await sandboxFromSettings(t.cwd).catch(() => null),
+    context: t.usedTokens === null && t.windowSize === null
+      ? null
+      : { usedPercent, windowSize: t.windowSize },
+    outputPerSecond: await outputSpeed(t.transcriptPath).catch(() => null),
+    observedAt: Date.now(),
+  }
+}
+
 export async function readClaudeSession(sessionId: string, paneId?: string): Promise<SessionInfo | null> {
   const text = await readFile(join(claudeDir(), `${sessionId}.json`), "utf8").catch(() => null)
-  if (!text) return null
+  // No collector payload means no status line is configured. Everything the payload carried is
+  // available from what Claude writes anyway, so the block is rebuilt from that rather than
+  // disappearing — see sources/claude-transcript.ts.
+  if (!text) return fromTranscript(sessionId, paneId)
   let d: any
-  try { d = JSON.parse(text) } catch { return null }
+  try { d = JSON.parse(text) } catch { return fromTranscript(sessionId, paneId) }
 
   const cw = d.context_window ?? {}
 
