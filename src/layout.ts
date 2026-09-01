@@ -97,7 +97,6 @@ export function compose(
   style: Style,
 ): { lines: string[]; offsets: number[]; spans: Span[] } {
   const dim = style.muted ?? ((s: string) => s)
-  const bold = style.bold ?? ((s: string) => s)
 
   if (!regions.length) return { lines: pinned.slice(0, height), offsets: [], spans: [] }
 
