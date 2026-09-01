@@ -37,6 +37,12 @@ export function shellsSection(): Section {
 
     async refresh(ctx) {
       subject = ctx.subject
+      try {
+        appendFileSync("/Users/lu/.sidebar-shells.log", JSON.stringify({
+          t: new Date().toISOString(), enter: true,
+          agent: ctx.subject?.agent ?? null, sid: ctx.subject?.sessionId ?? null,
+        }) + "\n")
+      } catch { /* diagnostic only */ }
       if (!subject?.sessionId) {
         snapshot = null
         return
