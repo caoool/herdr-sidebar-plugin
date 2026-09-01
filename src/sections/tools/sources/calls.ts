@@ -4,6 +4,7 @@ import { join } from "node:path"
 import { claudeDir } from "../../quota/sources/claude.js"
 import { rolloutFor } from "../../session/sources/codex.js"
 import { sessionDir } from "../../session/sources/grok.js"
+import { transcriptFor as claudeTranscriptFor } from "../../session/sources/claude-transcript.js"
 import type { ProviderKind } from "../../../types.js"
 import type { ToolCall } from "../types.js"
 
@@ -91,11 +92,16 @@ export async function transcriptFor(
 ): Promise<string | null> {
   if (agent === "claude") {
     const text = await readFile(join(claudeDir(), `${sessionId}.json`), "utf8").catch(() => null)
-    if (!text) return null
-    try {
-      const path = JSON.parse(text)?.transcript_path
-      return typeof path === "string" ? path : null
-    } catch { return null }
+    if (text) {
+      try {
+        const path = JSON.parse(text)?.transcript_path
+        if (typeof path === "string") return path
+      } catch { /* fall through to the search */ }
+    }
+    // The collector only runs while a status line is configured, and a status line costs a row of
+    // terminal. Without it the transcript is still there to be found — searching for it keeps
+    // every section that reads a transcript working when the payload is gone.
+    return claudeTranscriptFor(sessionId)
   }
   if (agent === "codex") return rolloutFor(sessionId)
   const dir = await sessionDir(sessionId)
