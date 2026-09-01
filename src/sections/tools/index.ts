@@ -159,7 +159,10 @@ export function toolsSection(): Section {
 
     regions(width, style) {
       if (!subject) return []
-      return [toolsRows(calls, width, style), mcpRows(mcp, width, style)]
+      // The MCP region opens with a blank row so the two blocks read as separate at a glance,
+      // the same separation the pinned sections get. It belongs to the region rather than sitting
+      // between them, so it scrolls away with the block it introduces instead of stranding a gap.
+      return [toolsRows(calls, width, style), ["", ...mcpRows(mcp, width, style)]]
     },
   }
 }
