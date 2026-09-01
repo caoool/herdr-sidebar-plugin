@@ -121,3 +121,19 @@ test("styling never changes a row's width", () => {
   const styled = todosBlock(snap, 30, TERMINAL).map(strip)
   assert.deepEqual(styled, plain)
 })
+
+test("a plan far behind the tail window is still found, once", () => {
+  // Grok emits its plan when it changes — usually early — and then buries it under thousands of
+  // very large tool_call_update lines. Measured on a real session the newest plan sat 2.6 MB from
+  // the end, so a tail of any sane size misses it and the section showed a dash despite a plan
+  // existing. newestPlan must therefore work line-by-line, as the full scan feeds it.
+  const buried = planLine([{ content: "early", status: "completed" }])
+  const noise = Array.from({ length: 500 }, () =>
+    JSON.stringify({ params: { update: { sessionUpdate: "tool_call_update" } } }))
+  let found: ReturnType<typeof newestPlan> = null
+  for (const line of [buried, ...noise]) {
+    const plan = newestPlan([line])
+    if (plan) found = plan
+  }
+  assert.deepEqual(found, [{ text: "early", status: "completed" }])
+})

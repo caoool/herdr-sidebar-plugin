@@ -1,6 +1,8 @@
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { readdir, stat } from "node:fs/promises"
+import { createReadStream } from "node:fs"
+import { createInterface } from "node:readline"
 import { tailLines } from "../../../tail.js"
 import type { Todo, TodoStatus } from "../types.js"
 
@@ -57,16 +59,49 @@ async function updatesPath(sessionId: string): Promise<string | null> {
 }
 
 /**
+ * Scan the whole file, once, for a plan set before the tail window.
+ *
+ * Streamed rather than read whole: these files reach several megabytes, and the plan is usually
+ * nowhere near the end. Measured on a real session, the newest plan sat 2.6 MB back — a tail of
+ * any sane size would never have reached it, which is exactly what the first version got wrong.
+ */
+async function fullScan(path: string): Promise<Todo[] | null> {
+  let found: Todo[] | null = null
+  try {
+    const rl = createInterface({ input: createReadStream(path), crlfDelay: Infinity })
+    for await (const line of rl) {
+      const plan = newestPlan([line])
+      if (plan) found = plan
+    }
+  } catch { return null }
+  return found
+}
+
+/**
  * Remembered per session, because a plan set early in a long session falls out of the tail
  * window. Only a newer plan replaces it, so the list cannot silently revert to nothing on a
  * refresh that happened to read past it.
  */
 const known = new Map<string, Todo[]>()
+/** Sessions already scanned in full, so the one expensive pass happens at most once each. */
+const scanned = new Set<string>()
 
 export async function readGrokTodos(sessionId: string): Promise<Todo[] | null> {
   const path = await updatesPath(sessionId)
   if (!path) return known.get(sessionId) ?? null
-  const plan = newestPlan(await tailLines(path, UPDATES_TAIL))
-  if (plan) known.set(sessionId, plan)
+
+  // The tail first, so a plan changed moments ago is picked up immediately and supersedes
+  // anything older. Only when it has nothing is the whole file worth a pass.
+  const recent = newestPlan(await tailLines(path, UPDATES_TAIL))
+  if (recent) {
+    known.set(sessionId, recent)
+    return recent
+  }
+
+  if (!scanned.has(sessionId)) {
+    scanned.add(sessionId)
+    const whole = await fullScan(path)
+    if (whole) known.set(sessionId, whole)
+  }
   return known.get(sessionId) ?? null
 }
