@@ -1,8 +1,7 @@
-import { labelled, truncate } from "../session/format.js"
+import { labelled, tally, truncate } from "../session/format.js"
 import { displayWidth } from "../../width.js"
 import type { Segment } from "../session/format.js"
 import type { Style } from "../../ansi.js"
-import type { ProviderKind } from "../../types.js"
 import type { McpSnapshot, McpStatus, ToolCall } from "./types.js"
 
 const DASH = "—"
@@ -47,43 +46,37 @@ function nameRow(
 }
 
 /**
- * The TOOLS block: a heading carrying the session's total, then one row per tool.
+ * The total number of calls this session has made, sitting on the list of what it called.
  *
- * Split from the MCP block because the two scroll independently — a session that has called forty
- * distinct tools must not bury the server list, and a reader scrolling one should not move the
- * other.
+ * Worth keeping where the section heading was, because it is not the row count: a session with
+ * four distinct tools may have called them eight hundred times, and that figure is the one the
+ * rows cannot show.
  */
-export function toolsHead(calls: ToolCall[], width: number, style: Style): string[] {
-  const muted = style.muted ?? ((s: string) => s)
+export function toolsTally(calls: ToolCall[], width: number, style: Style): string {
   const total = calls.reduce((n, c) => n + c.count, 0)
-  return [
-    // The bare count, like MCP's. "calls" said what the rows beneath it already say, and cost
-    // columns the numbers could use.
-    labelled("TOOLS", total ? [{ text: String(total) }] : [{ text: DASH, paint: muted }],
-      width, style.bold),
-    "",
-  ]
+  return tally("tools", total ? String(total) : null, width, style)
 }
 
-/** One row per tool, most recently used first. The heading is `toolsHead`. */
+/** One row per tool, most recently used first. */
 export function toolItems(calls: ToolCall[], width: number, style: Style): string[] {
   const label = style.label ?? ((s: string) => s)
   return calls.map((call) => nameRow(call.name, [{ text: String(call.count) }], width, label))
 }
 
-export function mcpHead(mcp: McpSnapshot | null, width: number, style: Style): string[] {
-  const muted = style.muted ?? ((s: string) => s)
+/**
+ * Servers reachable, over servers configured.
+ *
+ * Also not a row count: a list of six servers of which one has failed and one needs auth reads
+ * very differently from six healthy ones, and the glyphs say which is which only once you have
+ * counted them.
+ */
+export function mcpTally(mcp: McpSnapshot | null, width: number, style: Style): string {
   const servers = mcp?.servers ?? null
   const healthy = servers?.filter((s) => HEALTHY.includes(s.status)).length ?? 0
-  return [
-    labelled("MCP", servers && servers.length
-      ? [{ text: `${healthy}/${servers.length}` }]
-      : [{ text: DASH, paint: muted }], width, style.bold),
-    "",
-  ]
+  return tally("mcp", servers && servers.length ? `${healthy}/${servers.length}` : null, width, style)
 }
 
-/** One row per server, in the order the agent reports them. The heading is `mcpHead`. */
+/** One row per server, in the order the agent reports them. */
 export function mcpItems(mcp: McpSnapshot | null, width: number, style: Style): string[] {
   const muted = style.muted ?? ((s: string) => s)
   const label = style.label ?? ((s: string) => s)
@@ -97,24 +90,4 @@ export function mcpItems(mcp: McpSnapshot | null, width: number, style: Style): 
           : undefined }
     return nameRow(server.name, [segment], width, label)
   })
-}
-
-/** The TOOLS block whole, for callers that do not scroll its parts separately. */
-export function toolsRows(calls: ToolCall[], width: number, style: Style): string[] {
-  return [...toolsHead(calls, width, style), ...toolItems(calls, width, style)]
-}
-
-/** The MCP block whole, for callers that do not scroll its parts separately. */
-export function mcpRows(mcp: McpSnapshot | null, width: number, style: Style): string[] {
-  return [...mcpHead(mcp, width, style), ...mcpItems(mcp, width, style)]
-}
-
-export function toolsBlock(
-  calls: ToolCall[],
-  mcp: McpSnapshot | null,
-  _agent: ProviderKind,
-  width: number,
-  style: Style,
-): string[] {
-  return [...toolsRows(calls, width, style), "", ...mcpRows(mcp, width, style)]
 }

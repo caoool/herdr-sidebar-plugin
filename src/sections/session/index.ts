@@ -6,7 +6,7 @@ import { gitInfo } from "./sources/git.js"
 import type { Section } from "../types.js"
 import type { Style } from "../../ansi.js"
 import { claudeDir } from "../quota/sources/claude.js"
-import { sessionBlock, divergence } from "./format.js"
+import { divergence, modelRows, sessionBanner, workspaceRows } from "./format.js"
 import { readClaudeSession } from "./sources/claude.js"
 import { readCodexSession } from "./sources/codex.js"
 import { readGrokSession } from "./sources/grok.js"
@@ -50,6 +50,7 @@ export function sessionSection(): Section {
 
   return {
     id: "session",
+    placement: "bottom",
 
     watch: () => [
       claudeDir(),
@@ -73,8 +74,17 @@ export function sessionSection(): Section {
       if (info && info.agent !== subject.agent) info = null
     },
 
-    render(width: number, style: Style) {
-      return sessionBlock(info, project, width, style)
+    banner(width: number, style: Style) {
+      return sessionBanner(info, width, style)
+    },
+
+    // Two regions rather than one block: the model rows and the workspace rows describe
+    // different things and earn the blank row the pane puts between regions.
+    regions(width: number, style: Style) {
+      return [
+        { head: modelRows(info, width, style), body: [] },
+        { head: workspaceRows(project, width, style), body: [] },
+      ]
     },
   }
 }

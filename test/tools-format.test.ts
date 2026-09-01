@@ -1,6 +1,17 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { toolsBlock } from "../src/sections/tools/format.js"
+import { mcpItems, mcpTally, toolItems, toolsTally } from "../src/sections/tools/format.js"
+import type { Style } from "../src/ansi.js"
+
+/** The two lists as the pane stacks them, minus the blank row it inserts between. */
+const toolsBlock = (
+  calls: ToolCall[], mcp: McpSnapshot | null, _agent: string, width: number, style: Style,
+) => [
+  ...(calls.length ? [toolsTally(calls, width, style)] : []),
+  ...toolItems(calls, width, style),
+  ...(mcp?.servers.length ? [mcpTally(mcp, width, style)] : []),
+  ...mcpItems(mcp, width, style),
+]
 import { PLAIN, TERMINAL } from "../src/ansi.js"
 import type { McpSnapshot, ToolCall } from "../src/sections/tools/types.js"
 
@@ -23,11 +34,11 @@ const mcp: McpSnapshot = {
   ],
 }
 
-test("the header counts total calls, not distinct tools", () => {
-  const lines = toolsBlock(calls, mcp, "claude", 30, PLAIN)
-  assert.ok(lines[0].startsWith("TOOLS"))
-  assert.ok(lines[0].endsWith("39"), lines[0])
-  assert.ok(!lines[0].includes("calls"), "the bare figure, like MCP's")
+test("the total counts calls, not distinct tools", () => {
+  const line = toolsTally(calls, 30, PLAIN)
+  assert.ok(line.startsWith("tools"), line)
+  assert.ok(line.endsWith("39"), line)
+  assert.ok(!line.includes("calls"), "the bare figure, like MCP's")
 })
 
 test("every tool is listed — there is no top-N cut", () => {
@@ -36,10 +47,10 @@ test("every tool is listed — there is no top-N cut", () => {
   for (let i = 0; i < 24; i++) assert.ok(row(lines, `t${i}`), `t${i} is missing`)
 })
 
-test("the MCP header counts healthy servers over the total", () => {
-  const lines = toolsBlock(calls, mcp, "claude", 30, PLAIN)
-  const header = lines.find((l) => l.startsWith("MCP")) ?? ""
-  assert.ok(header.endsWith("1/3"), header)
+test("the MCP total counts healthy servers over the configured ones", () => {
+  const line = mcpTally(mcp, 30, PLAIN)
+  assert.ok(line.startsWith("mcp"), line)
+  assert.ok(line.endsWith("1/3"), line)
 })
 
 test("each status gets its own glyph", () => {
@@ -59,19 +70,16 @@ test("Codex renders enabled and disabled, and never a connected glyph", () => {
   assert.ok(row(lines, "codex_app").endsWith("○"))
 })
 
-test("no tool calls yet is a dash, not an empty block", () => {
-  const lines = toolsBlock([], mcp, "claude", 30, PLAIN)
-  assert.ok(lines[0].endsWith("—"), lines[0])
+test("no tool calls yet is a dash, not a confident zero", () => {
+  assert.ok(toolsTally([], 30, PLAIN).endsWith("—"))
 })
 
 test("no MCP reading at all is a dash", () => {
-  const lines = toolsBlock(calls, null, "grok", 30, PLAIN)
-  const header = lines.find((l) => l.startsWith("MCP")) ?? ""
-  assert.ok(header.endsWith("—"), header)
+  assert.ok(mcpTally(null, 30, PLAIN).endsWith("—"))
 })
 
 test("a dash is dimmed wherever it stands in for a value", () => {
-  const lines = toolsBlock([], null, "grok", 30, TERMINAL)
+  const lines = [toolsTally([], 30, TERMINAL), mcpTally(null, 30, TERMINAL)]
   for (const line of lines.filter((l) => strip(l).includes("—"))) {
     assert.match(line, /\x1b\[2m—/)
   }
@@ -84,9 +92,11 @@ test("styling never changes a row's width", () => {
   for (const line of plain) if (line) assert.equal(line.length, 30)
 })
 
-test("the blank-row-after-title convention matches the other sections", () => {
+test("the total sits directly on its list, with no blank row between", () => {
+  // It is part of the list rather than a heading over it, now that the headings are gone.
   const lines = toolsBlock(calls, mcp, "claude", 30, PLAIN)
-  assert.equal(lines[1], "")
+  assert.ok(lines[0].startsWith("tools"))
+  assert.ok(strip(lines[1]).startsWith("Bash"), lines[1])
 })
 
 // A name long enough to fill the row on its own — both from real output. `labelled`'s gap
@@ -99,7 +109,7 @@ test("a tool name long enough to fill the row on its own still yields an exactly
   const plain = toolsBlock(longCall, null, "claude", 30, PLAIN)
   const styled = toolsBlock(longCall, null, "claude", 30, TERMINAL).map(strip)
   assert.deepEqual(styled, plain)
-  const toolRow = plain[2] // TOOLS header, blank, then the one call row
+  const toolRow = plain[1] // the total, then the one call row
   assert.ok(toolRow.length > 0, "the call row is missing")
   assert.equal(toolRow.length, 30)
 })
@@ -112,8 +122,8 @@ test("an MCP server name long enough to fill the row on its own still yields an 
   const plain = toolsBlock([], longMcp, "claude", 30, PLAIN)
   const styled = toolsBlock([], longMcp, "claude", 30, TERMINAL).map(strip)
   assert.deepEqual(styled, plain)
-  // TOOLS dash(0), blank(1), blank before MCP(2), MCP header(3), blank(4), the one server row(5)
-  const serverRow = plain[5]
+  // No calls yet, so the block is the MCP total then its one server row.
+  const serverRow = plain[1]
   assert.ok(serverRow.length > 0, "the server row is missing")
   assert.equal(serverRow.length, 30)
 })
@@ -124,9 +134,8 @@ test("an unverified server dashes rather than claiming a status glyph, but still
     servers: [...mcp.servers, { name: "odd", status: "unverified" }],
   }
   const lines = toolsBlock(calls, withUnverified, "claude", 30, TERMINAL)
-  const header = lines.find((l) => strip(l).startsWith("MCP ")) ?? ""
   // Still 1 healthy (context7) out of a total that now includes the unverified server.
-  assert.ok(strip(header).endsWith("1/4"), header)
+  assert.ok(strip(mcpTally(withUnverified, 30, TERMINAL)).endsWith("1/4"))
   const oddRow = row(lines, "odd")
   assert.ok(strip(oddRow).endsWith("—"), oddRow)
   assert.match(oddRow, /\x1b\[2m—/, "the dash must be dimmed like every other unknown value")
@@ -137,7 +146,7 @@ test("a name that exactly fills the row is not needlessly truncated", () => {
   // the label budget is exactly 28 — a name of that length should survive whole, no ellipsis.
   const name = "x".repeat(28)
   const lines = toolsBlock([{ name, count: 7 }], null, "claude", 30, PLAIN)
-  const toolRow = lines[2]
+  const toolRow = lines[1] // the total, then the one call row
   assert.equal(toolRow.length, 30)
   assert.ok(toolRow.startsWith(name), toolRow)
   assert.ok(!toolRow.includes("…"), toolRow)

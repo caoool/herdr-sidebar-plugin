@@ -1,9 +1,8 @@
 import { homedir } from "node:os"
 import { join } from "node:path"
-import { VISIBLE } from "../types.js"
 import type { Section, SectionContext } from "../types.js"
 import type { Subagent, SubagentSnapshot } from "./types.js"
-import { subagentItems, subagentsBlock, subagentsHead } from "./format.js"
+import { subagentItems } from "./format.js"
 import { readClaudeSubagents } from "./sources/claude.js"
 import { CODEX_SESSIONS, readCodexSubagents } from "./sources/codex.js"
 import { readGrokSubagents } from "./sources/grok.js"
@@ -26,7 +25,7 @@ export function subagentsSection(): Section {
 
   return {
     id: "subagents",
-    scrollable: true,
+    placement: "top",
 
     watch: () => [CODEX_SESSIONS, join(homedir(), ".grok", "sessions")],
 
@@ -54,19 +53,11 @@ export function subagentsSection(): Section {
       snapshot = { agent, running, observedAt: Date.now() }
     },
 
-    render(width, style) {
-      if (!subject) return []
-      return subagentsBlock(snapshot, width, style)
-    },
-
+    // Hidden when nothing is in flight, like SHELLS: a row here always means work is running.
     regions(width, style) {
       if (!subject) return []
-      const running = snapshot?.running ?? null
-      return [{
-        head: ["", ...subagentsHead(running, width, style)],
-        body: subagentItems(running, width, style),
-        maxBody: VISIBLE,
-      }]
+      const rows = subagentItems(snapshot?.running ?? null, width, style)
+      return rows.length ? [{ head: rows, body: [] }] : []
     },
   }
 }

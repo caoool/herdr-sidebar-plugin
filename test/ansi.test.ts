@@ -1,7 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { percentStyle, paintPercent, bold, TERMINAL } from "../src/ansi.js"
-import { row, block } from "../src/sections/quota/format.js"
+import { agentRow } from "../src/sections/quota/format.js"
 import type { QuotaSnapshot, QuotaWindow } from "../src/sections/quota/types.js"
 
 const GREEN = "38;5;41"
@@ -36,12 +36,18 @@ const win = (over: Partial<QuotaWindow> = {}): QuotaWindow =>
   ({ id: "x", label: "5h", percent: 15, resetsAt: null, windowMinutes: 300, active: true, ...over })
 
 const strip = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "")
+const snapOf = (windows: QuotaWindow[]): QuotaSnapshot => ({
+  agent: "codex", sessionId: null, plan: null, windows,
+  credits: null, observedAt: Date.now(), source: "rollout",
+})
 
 test("styling never changes column widths", () => {
   // Escape sequences occupy no columns; measuring the painted string would misalign rows.
   for (const percent of [null, 0, 4, 15, 55, 75, 99]) {
-    const plain = row(win({ percent, resetsAt: 1_800_000_000 }), 30)
-    const painted = row(win({ percent, resetsAt: 1_800_000_000 }), 30, Date.now(), paintPercent)
+    const w = win({ percent, resetsAt: 1_800_000_000 })
+    const plain = agentRow("codex", snapOf([w]), 30)
+    const painted = agentRow("codex", snapOf([w]), 30, Date.now(),
+      { bold: (s) => s, paint: paintPercent })
     assert.equal(strip(painted), plain, `mismatch at ${percent}`)
   }
 })
@@ -51,12 +57,12 @@ test("the active provider name is naming text, greyed like a row label", () => {
     agent: "claude", sessionId: null, plan: null, windows: [win()],
     credits: null, observedAt: Date.now(), source: "statusline",
   }
-  const [heading] = block("claude", snap, 30, Date.now(), TERMINAL)
+  const heading = agentRow("claude", snap, 30, Date.now(), TERMINAL)
   assert.match(heading, /^\x1b\[38;5;250mCLAUDE/)
-  assert.equal(strip(heading), "CLAUDE")
+  assert.ok(strip(heading).startsWith("CLAUDE"))
 })
 
 test("an empty provider line keeps its width once styling is stripped", () => {
-  const [line] = block("codex", null, 30, Date.now(), TERMINAL)
+  const line = agentRow("codex", null, 30, Date.now(), TERMINAL)
   assert.equal(strip(line).length, 30)
 })

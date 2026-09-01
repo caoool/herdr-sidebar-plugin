@@ -1,23 +1,12 @@
-import { labelled, truncate } from "../session/format.js"
+import { truncate } from "../session/format.js"
 import type { Style } from "../../ansi.js"
 import { displayWidth } from "../../width.js"
-import type { Shell, ShellKind, ShellSnapshot } from "./types.js"
+import type { Shell, ShellKind } from "./types.js"
 
 const DASH = "—"
 
 /** A shell is a command; a monitor is an eye kept on one. */
 const GLYPH: Record<ShellKind, string> = { shell: "$", monitor: "⟳" }
-
-/** The heading: how many things this session has running. */
-export function shellsHead(running: Shell[] | null, width: number, style: Style): string[] {
-  const muted = style.muted ?? ((s: string) => s)
-  return [
-    labelled("SHELLS", running && running.length
-      ? [{ text: String(running.length) }]
-      : [{ text: DASH, paint: muted }], width, style.bold),
-    "",
-  ]
-}
 
 /**
  * One row per running command, glyph first.
@@ -43,12 +32,3 @@ export function shellItems(running: Shell[] | null, width: number, style: Style)
   })
 }
 
-/** Both parts stacked, for callers that do not scroll them separately. */
-export function shellsBlock(
-  snapshot: ShellSnapshot | null,
-  width: number,
-  style: Style,
-): string[] {
-  const running = snapshot?.running ?? null
-  return [...shellsHead(running, width, style), ...shellItems(running, width, style)]
-}

@@ -94,6 +94,72 @@ export function labelled(
   return paintLabel(label) + " ".repeat(gap) + painted
 }
 
+/**
+ * The first candidate that fits whole, else the last one cut to size.
+ *
+ * A two-part value must not be cut mid-separator. Truncating "Opus 5 | ultracode" by column
+ * leaves "Opus 5 | " — a separator joining nothing — which reads as a rendering bug rather than
+ * as a value that did not fit. Dropping the second part outright is the honest cut: the row says
+ * less instead of looking broken.
+ */
+export function best(candidates: Segment[][], budget: number): Segment[] {
+  for (const candidate of candidates) {
+    if (displayWidth(candidate.map((s) => s.text).join("")) <= budget) return candidate
+  }
+  return fitSegments(candidates[candidates.length - 1] ?? [], budget)
+}
+
+/** As much of `segments` as fits, cutting the segment that straddles the boundary. */
+function fitSegments(segments: Segment[], budget: number): Segment[] {
+  const fitted: Segment[] = []
+  let left = budget
+  for (const segment of segments) {
+    if (left <= 0) break
+    const w = displayWidth(segment.text)
+    if (w <= left) { fitted.push(segment); left -= w; continue }
+    const cut = truncateToWidth(segment.text, left)
+    if (cut) fitted.push({ ...segment, text: cut })
+    left = 0
+  }
+  return fitted
+}
+
+/**
+ * Two values on one row, the second flush right.
+ *
+ * Unlike `labelled` neither side names the other: with the row labels gone, both halves are
+ * figures, and what a row is saying comes from where it sits rather than from a word. The left
+ * side degrades through `leftCandidates` when the row is cramped, the right side never does —
+ * it is the shorter of the two and the one a reader scans down a column.
+ */
+export function spread(
+  leftCandidates: Segment[][],
+  right: Segment[],
+  width: number,
+): string {
+  const rightPlain = right.map((s) => s.text).join("")
+  const left = best(leftCandidates, Math.max(0, width - displayWidth(rightPlain) - 1))
+  const leftPlain = left.map((s) => s.text).join("")
+  const gap = Math.max(1, width - displayWidth(leftPlain) - displayWidth(rightPlain))
+  const paint = (segments: Segment[]) =>
+    segments.map((s) => (s.paint ? s.paint(s.text) : s.text)).join("")
+  return paint(left) + " ".repeat(gap) + paint(right)
+}
+
+/**
+ * A list's total, sitting directly on the list it counts.
+ *
+ * This is what survives of the section headings. It is kept only where the figure says something
+ * the rows below do not — total calls, servers healthy of configured, todos done of planned —
+ * and never on a list whose figure would just recount the visible rows. Dimmed throughout,
+ * because it is context for the list rather than a reading in its own right, and with no blank
+ * row under it so it reads as part of the list rather than as a heading over it.
+ */
+export function tally(name: string, value: string | null, width: number, style: Style): string {
+  const dim = style.muted ?? ((s: string) => s)
+  return labelled(name, [{ text: value ?? DASH, paint: dim }], width, dim)
+}
+
 /** Joins the halves of a two-part value, collapsing to a dash when neither half is known. */
 function twoPart(
   left: string | null,
@@ -122,80 +188,100 @@ export function divergence(ahead: number | null, behind: number | null): string 
 }
 
 /**
- * The section: a labelled row per fact, no gauge.
+ * The session's name, riding the very top of the pane.
  *
- * The context percentage carries the same colour ramp as quota — both answer "how much of a
- * budget is gone", so a reader who has learned the ramp in one place reads it in the other
- * without relearning.
+ * It named the block back when the block had a heading. With the headings gone it names the pane
+ * instead, which is the one thing on screen that is not a figure — and the pane needs something
+ * that says which session all these numbers belong to.
  */
-export function sessionBlock(
-  info: SessionInfo | null,
-  project: ProjectInfo | null,
-  width: number,
-  style: Style,
-): string[] {
-  if (!info && !project) return []
+export function sessionBanner(info: SessionInfo | null, width: number, style: Style): string[] {
+  if (!info?.name) return []
+  return [style.bold(truncate(info.name, width))]
+}
+
+/**
+ * The model block: what is answering, how hard, under what rules, and how full it is.
+ *
+ *   Opus 5 | ultracode    ● on-request
+ *   62% | 1M                    41 t/s
+ *
+ * No row labels. Every value here is self-describing — a percentage against a token count, a
+ * rate with its unit — so a word naming the row would cost columns the figures can use. What a
+ * row means comes from where it sits, which is why this block is pinned to the foot of the pane
+ * and never moves.
+ */
+export function modelRows(info: SessionInfo | null, width: number, style: Style): string[] {
+  if (!info) return []
   const finish = style.line ?? ((s: string) => s)
   const mark = style.mark ?? ((t: string) => t)
-  const asLabel = style.label ?? ((t: string) => t)
   const asMuted = style.muted ?? ((t: string) => t)
 
-  const rowFor = (label: string, segments: Segment[]) =>
-    finish(labelled(label, segments, width, asLabel))
-  /** A value column of roughly this much, once the label and its gap are taken. */
-  const valueWidth = Math.max(8, width - 10)
-  const text = (v: string | null): Segment[] =>
-    v ? [{ text: truncate(v, valueWidth) }] : [{ text: DASH, paint: asMuted }]
+  // The sandbox state is a lit or unlit dot rather than a policy name: the policies differ per
+  // agent — a Codex sandbox_policy, a Grok profile, a Claude boolean — and only the on/off
+  // distinction is common to all three and meaningful at this width.
+  const sandbox: Segment =
+    info.sandboxEnabled === null
+      ? { text: DASH, paint: asMuted }
+      : { text: info.sandboxEnabled ? ON : OFF, paint: (t) => mark(t, info.sandboxEnabled === true) }
+  const mode: Segment[] = [
+    sandbox,
+    { text: " " },
+    info.permissionMode ? { text: info.permissionMode } : { text: DASH, paint: asMuted },
+  ]
 
-  const rows: string[] = []
+  const model: Segment[][] = info.model
+    ? info.effort
+      ? [[{ text: info.model }, { text: SEP, paint: asMuted }, { text: info.effort }], [{ text: info.model }]]
+      : [[{ text: info.model }]]
+    : [[{ text: DASH, paint: asMuted }]]
 
-  if (info) {
-    rows.push(rowFor("MODEL", twoPart(info.model, info.effort, undefined, asMuted)))
+  const percent = info.context?.usedPercent ?? null
+  const paintContext = (t: string) => (style.paintContext ?? style.paint)(t, percent)
+  const size = info.context?.windowSize == null ? null : abbreviate(info.context.windowSize)
+  const used: Segment = percent === null
+    ? { text: DASH, paint: asMuted }
+    : { text: `${Math.round(percent)}%`, paint: paintContext }
+  const context: Segment[][] = size
+    ? [[used, { text: SEP, paint: asMuted }, { text: size }], [used]]
+    : [[used]]
 
-    // The sandbox state is a lit or unlit dot rather than a policy name: the policies differ
-    // per agent — a Codex sandbox_policy, a Grok profile, a Claude boolean — and only the
-    // on/off distinction is common to all three and meaningful at this width.
-    const sandbox: Segment =
-      info.sandboxEnabled === null
-        ? { text: DASH, paint: asMuted }
-        : { text: info.sandboxEnabled ? ON : OFF, paint: (t) => mark(t, info.sandboxEnabled === true) }
-    rows.push(rowFor("MODE", [
-      sandbox,
-      { text: " " },
-      info.permissionMode ? { text: info.permissionMode } : { text: DASH, paint: asMuted },
-    ]))
+  const speed: Segment[] = info.outputPerSecond === null
+    ? [{ text: DASH, paint: asMuted }, { text: " t/s" }]
+    : [{ text: `${Math.round(info.outputPerSecond)} t/s` }]
 
-    const percent = info.context?.usedPercent ?? null
-    rows.push(rowFor("CONTEXT", twoPart(
-      percent === null ? null : `${Math.round(percent)}%`,
-      info.context?.windowSize == null ? null : abbreviate(info.context.windowSize),
-      (t) => (style.paintContext ?? style.paint)(t, percent),
-      asMuted,
-    )))
+  return [finish(spread(model, mode, width)), finish(spread(context, speed, width))]
+}
 
-    rows.push(rowFor("SPEED", info.outputPerSecond === null
-      ? [{ text: DASH, paint: asMuted }, { text: " t/s" }]
-      : [{ text: `${Math.round(info.outputPerSecond)} t/s` }]))
-  }
+/**
+ * The workspace block: where this pane is working.
+ *
+ *   herdr-sidebar-plugin
+ *   main/feature-x                ↑2 ↓1
+ *
+ * The worktree rides the branch behind a slash rather than taking a row of its own: most
+ * checkouts are not worktrees, and a row that is a dash more often than not earns no space at
+ * the foot of the pane. When the row is cramped the worktree is what gives way — the branch is
+ * the half that identifies the work.
+ */
+export function workspaceRows(project: ProjectInfo | null, width: number, style: Style): string[] {
+  if (!project) return []
+  const finish = style.line ?? ((s: string) => s)
+  const asMuted = style.muted ?? ((t: string) => t)
 
-  if (project) {
-    // A blank line rather than a second heading: these describe the same pane, and a reader
-    // scanning labels does not need to be told the list continues.
-    if (rows.length) rows.push("")
-    rows.push(rowFor("WORKSPACE", text(project.workspace)))
-    rows.push(rowFor("BRANCH", text(project.branch)))
-    // Kept even when empty. Most checkouts are not worktrees and most branches are level, so
-    // these dash more often than not — but a table whose rows come and go is harder to read at
-    // a glance than one whose shape is fixed and whose blanks are explicit.
-    rows.push(rowFor("WORKTREE", text(project.worktree)))
-    rows.push(rowFor("DIFF", text(project.diff || null)))
-  }
+  const name = project.workspace
+    ? truncate(project.workspace, width)
+    : asMuted(DASH)
 
-  // The session's name rides the heading rather than taking a row of its own: it names the
-  // block, which is what a heading is for, and the rows below are all facts about it.
-  const heading = info?.name
-    ? labelled("SESSION", [{ text: truncate(info.name, Math.max(8, width - 9)) }], width, style.bold)
-    : style.bold("SESSION")
+  const branch = project.branch
+  const ref: Segment[][] = branch
+    ? project.worktree
+      ? [[{ text: branch }, { text: "/", paint: asMuted }, { text: project.worktree }], [{ text: branch }]]
+      : [[{ text: branch }]]
+    : [[{ text: DASH, paint: asMuted }]]
 
-  return [finish(heading), "", ...rows]
+  // Divergence reads as nothing rather than as "↑0 ↓0": a branch level with its upstream has
+  // nothing to report, and printing zeros would make the ordinary case the loudest row.
+  const diff: Segment[] = project.diff ? [{ text: project.diff }] : []
+
+  return [finish(name), finish(spread(ref, diff, width))]
 }

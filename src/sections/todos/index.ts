@@ -1,9 +1,6 @@
-import { homedir } from "node:os"
-import { join } from "node:path"
-import { VISIBLE } from "../types.js"
 import type { Section, SectionContext } from "../types.js"
 import type { TodoSnapshot } from "./types.js"
-import { todoItems, todosBlock, todosHead } from "./format.js"
+import { todoItems, todosTally } from "./format.js"
 import { CLAUDE_TASKS, readClaudeTodos } from "./sources/claude.js"
 import { CODEX_SESSIONS } from "../quota/sources/codex.js"
 import { GROK_SESSIONS, readGrokTodos } from "./sources/grok.js"
@@ -28,7 +25,7 @@ export function todosSection(): Section {
 
   return {
     id: "todos",
-    scrollable: true,
+    placement: "flex",
 
     watch: () => [CLAUDE_TASKS, GROK_SESSIONS, CODEX_SESSIONS],
 
@@ -46,19 +43,14 @@ export function todosSection(): Section {
       snapshot = todos ? { agent, todos, observedAt: Date.now() } : null
     },
 
-    render(width, style) {
-      if (!subject) return []
-      return todosBlock(snapshot, width, style)
-    },
-
+    // The one section that expands: it is given every row the pinned bands leave, and scrolls
+    // only once the list outgrows even that. Uncapped for the same reason.
     regions(width, style) {
       if (!subject) return []
       const todos = snapshot?.todos ?? null
-      return [{
-        head: ["", ...todosHead(todos, width, style)],
-        body: todoItems(todos, width, style),
-        maxBody: VISIBLE,
-      }]
+      const items = todoItems(todos, width, style)
+      if (!items.length) return []
+      return [{ head: [todosTally(todos, width, style)], body: items }]
     },
   }
 }

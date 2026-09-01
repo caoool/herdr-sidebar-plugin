@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { orderTasks, toTodo } from "../src/sections/todos/sources/claude.js"
 import { newestPlan } from "../src/sections/todos/sources/grok.js"
 import { newestPlan as codexNewestPlan } from "../src/sections/todos/sources/codex.js"
-import { todosBlock, todoItems, todosHead } from "../src/sections/todos/format.js"
+import { todoItems, todosTally } from "../src/sections/todos/format.js"
 import { PLAIN, TERMINAL } from "../src/ansi.js"
 import { displayWidth } from "../src/width.js"
 import type { Todo, TodoSnapshot } from "../src/sections/todos/types.js"
@@ -79,9 +79,9 @@ const todos: Todo[] = [
 ]
 const snap: TodoSnapshot = { agent: "claude", todos, observedAt: Date.now() }
 
-test("the heading counts completed over total", () => {
-  const [head] = todosHead(todos, 30, PLAIN)
-  assert.ok(head.startsWith("TODOS"))
+test("the total counts completed over planned, and is lower case now the heading is gone", () => {
+  const head = todosTally(todos, 30, PLAIN)
+  assert.ok(head.startsWith("todos"), head)
   assert.ok(head.endsWith("1/4"), head)
 })
 
@@ -101,7 +101,7 @@ test("only work underway is lit; pending and failed are not achievements", () =>
 })
 
 test("no todos at all is a dash, never an empty list reading as finished", () => {
-  const [head] = todosHead(null, 30, PLAIN)
+  const head = todosTally(null, 30, PLAIN)
   assert.ok(head.endsWith("—"), head)
   assert.deepEqual(todoItems(null, 30, PLAIN), [])
 })
@@ -109,7 +109,7 @@ test("no todos at all is a dash, never an empty list reading as finished", () =>
 test("every row fits its column budget, including CJK subjects", () => {
   const cjk: Todo[] = [{ text: "三波形 tDCS/tACS/tPCS 落地（spec 2026-08-25）", status: "completed" }]
   for (const width of [20, 30, 34]) {
-    for (const line of todosBlock({ agent: "claude", todos: cjk, observedAt: 0 }, width, PLAIN)) {
+    for (const line of [todosTally(cjk, width, PLAIN), ...todoItems(cjk, width, PLAIN)]) {
       if (!line) continue
       assert.ok(displayWidth(strip(line)) <= width,
         `width ${width}: ${displayWidth(strip(line))} in ${JSON.stringify(line)}`)
@@ -118,8 +118,8 @@ test("every row fits its column budget, including CJK subjects", () => {
 })
 
 test("styling never changes a row's width", () => {
-  const plain = todosBlock(snap, 30, PLAIN)
-  const styled = todosBlock(snap, 30, TERMINAL).map(strip)
+  const plain = [todosTally(snap.todos, 30, PLAIN), ...todoItems(snap.todos, 30, PLAIN)]
+  const styled = [todosTally(snap.todos, 30, TERMINAL), ...todoItems(snap.todos, 30, TERMINAL)].map(strip)
   assert.deepEqual(styled, plain)
 })
 

@@ -2,7 +2,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { displayWidth, truncateToWidth } from "../src/width.js"
 import { labelled } from "../src/sections/session/format.js"
-import { sessionBlock } from "../src/sections/session/format.js"
+import { modelRows, sessionBanner, workspaceRows } from "../src/sections/session/format.js"
 import { PLAIN } from "../src/ansi.js"
 import type { ProjectInfo, SessionInfo } from "../src/sections/session/types.js"
 
@@ -48,7 +48,12 @@ test("every row of a CJK-named session fits its column budget", () => {
   // A row over budget wraps, which pushes the frame past the pane height and makes the whole
   // sidebar scroll — the symptom this measures against.
   for (const width of [20, 30, 34]) {
-    for (const line of sessionBlock(info, project, width, PLAIN)) {
+    const lines = [
+      ...sessionBanner(info, width, PLAIN),
+      ...modelRows(info, width, PLAIN),
+      ...workspaceRows(project, width, PLAIN),
+    ]
+    for (const line of lines) {
       if (!line) continue
       assert.ok(displayWidth(strip(line)) <= width,
         `width ${width}: ${displayWidth(strip(line))} columns in ${JSON.stringify(line)}`)
@@ -56,8 +61,13 @@ test("every row of a CJK-named session fits its column budget", () => {
   }
 })
 
-test("the heading keeps the name on one row rather than wrapping it", () => {
-  const [heading] = sessionBlock(info, project, 30, PLAIN)
-  assert.ok(!heading.includes("\n"))
-  assert.equal(displayWidth(heading), 30)
+test("the banner keeps a CJK name on one row rather than wrapping it", () => {
+  const [banner] = sessionBanner(info, 30, PLAIN)
+  assert.ok(!banner.includes("\n"))
+  assert.ok(displayWidth(banner) <= 30)
+})
+
+test("a CJK workspace name is cut by columns, not characters", () => {
+  const [name] = workspaceRows({ ...project, workspace: "使用分享文档验证" }, 10, PLAIN)
+  assert.ok(displayWidth(strip(name)) <= 10, `${displayWidth(strip(name))} columns in ${name}`)
 })

@@ -5,7 +5,7 @@ import { VISIBLE } from "../types.js"
 import type { Section, SectionContext } from "../types.js"
 import type { ProviderKind } from "../../types.js"
 import type { McpServer, McpSnapshot, ToolCall } from "./types.js"
-import { mcpHead, mcpItems, mcpRows, toolItems, toolsHead, toolsRows } from "./format.js"
+import { mcpItems, mcpTally, toolItems, toolsTally } from "./format.js"
 import { countCalls, transcriptFor } from "./sources/calls.js"
 import { parseClaudeMcp } from "./sources/claude.js"
 import { parseCodexMcp } from "./sources/codex.js"
@@ -114,7 +114,7 @@ export function toolsSection(): Section {
 
   return {
     id: "tools",
-    scrollable: true,
+    placement: "bottom",
 
     watch: () => [
       mcpDir(),
@@ -155,19 +155,15 @@ export function toolsSection(): Section {
       }
     },
 
-    render(width, style) {
-      if (!subject) return []
-      return [...toolsRows(calls, width, style), "", ...mcpRows(mcp, width, style)]
-    },
-
     regions(width, style) {
       if (!subject) return []
-      // Five items each, the rest reachable by scrolling. The heading rides in `head` so it
-      // stays put while its list moves; MCP's leading blank separates the two blocks and belongs
-      // to the region rather than sitting between them.
+      // Two regions so neither list can bury the other, each capped and scrolled on its own
+      // offset. The total rides in `head` so it stays put while its list moves.
+      const tools = toolItems(calls, width, style)
+      const servers = mcpItems(mcp, width, style)
       return [
-        { head: toolsHead(calls, width, style), body: toolItems(calls, width, style), maxBody: VISIBLE },
-        { head: ["", ...mcpHead(mcp, width, style)], body: mcpItems(mcp, width, style), maxBody: VISIBLE },
+        { head: tools.length ? [toolsTally(calls, width, style)] : [], body: tools, cap: VISIBLE },
+        { head: servers.length ? [mcpTally(mcp, width, style)] : [], body: servers, cap: VISIBLE },
       ]
     },
   }

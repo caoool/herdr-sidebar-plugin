@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { row, hhmm, resetText, block, isDerivedReset } from "../src/sections/quota/format.js"
+import { agentRow, hhmm, resetText, longestWindow, isDerivedReset } from "../src/sections/quota/format.js"
 import type { QuotaSnapshot, QuotaWindow } from "../src/sections/quota/types.js"
 
 const at = (h: number, m: number): number => {
@@ -46,68 +46,88 @@ test("duration decides the format, not the label", () => {
   assert.equal(resetText(shortWindow, now), "00:10")
 })
 
-test("no icon, no gauge — reset is bare and right-aligned", () => {
-  const line = row(sevenDay(), 30, now)
-  assert.ok(line.endsWith("6D"), line)
-  assert.doesNotMatch(line, /:/)
+const snap = (windows: QuotaWindow[]): QuotaSnapshot => ({
+  agent: "codex", sessionId: null, plan: null, windows, credits: null,
+  observedAt: now, source: "rollout",
+})
+const strip = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "")
+
+test("the longest window is chosen by duration, never by label", () => {
+  // Codex has already moved its long window from 10080 to 43200 minutes server-side; a
+  // label-keyed choice would silently pick the wrong row the day it moves again.
+  const short = fiveHour()
+  const long = sevenDay({ label: "primary" })
+  assert.equal(longestWindow([short, long])?.id, "seven_day")
+  assert.equal(longestWindow([long, short])?.id, "seven_day")
+  assert.equal(longestWindow([]), null)
+})
+
+test("an agent with one window uses it, whatever its duration", () => {
+  assert.equal(longestWindow([fiveHour()])?.id, "five_hour")
+})
+
+test("one row per agent: name, utilisation, reset", () => {
+  const line = strip(agentRow("claude", snap([fiveHour(), sevenDay()]), 30, now))
+  assert.ok(line.startsWith("CLAUDE"), line)
+  assert.ok(line.endsWith("6D"), "the long window's reset, not the short one's")
+  assert.match(line, /11%/, "the long window's percentage")
+  assert.doesNotMatch(line, /12%/, "the short window is not shown")
   assert.equal(line.length, 30)
+})
+
+test("no icon, no gauge", () => {
+  const line = strip(agentRow("claude", snap([sevenDay()]), 30, now))
   assert.doesNotMatch(line, /[█░🔄]/)
 })
 
 test("null percent renders as a dash, never 0%", () => {
-  const line = row(fiveHour({ percent: null }), 30, now)
-  assert.match(line, /^5h {5}—/)
+  const line = strip(agentRow("grok", snap([sevenDay({ percent: null })]), 30, now))
+  assert.match(line, /—/)
   assert.doesNotMatch(line, /0%/)
 })
 
-test("percentages align on the % regardless of digit count", () => {
-  const wide = row(fiveHour({ percent: 100 }), 30, now)
-  const mid = row(fiveHour({ percent: 15 }), 30, now)
-  const narrow = row(fiveHour({ percent: 4 }), 30, now)
-  assert.equal(wide.indexOf("%"), mid.indexOf("%"))
-  assert.equal(mid.indexOf("%"), narrow.indexOf("%"))
+test("an agent with no reading still takes its row", () => {
+  // Vanishing would be ambiguous — "not installed" and "collector stopped" would look alike.
+  const line = strip(agentRow("codex", null, 30, now))
+  assert.ok(line.startsWith("CODEX"))
+  assert.match(line, /—/)
+  assert.equal(line.length, 30)
+})
+
+test("a reading with zero windows reads the same as no reading", () => {
+  assert.equal(strip(agentRow("grok", snap([]), 30, now)), strip(agentRow("grok", null, 30, now)))
+})
+
+test("percentages and resets align in columns across agents", () => {
+  const rows = [
+    strip(agentRow("claude", snap([sevenDay({ percent: 100 })]), 30, now)),
+    strip(agentRow("codex", snap([sevenDay({ percent: 4 })]), 30, now)),
+    strip(agentRow("grok", snap([sevenDay({ percent: null })]), 30, now)),
+  ]
+  const figureEnds = rows.map((r) => r.search(/\S+\s+\S+$/) >= 0 ? r.length : -1)
+  assert.ok(figureEnds.every((n) => n === 30), "every row is exactly the width")
+  // The reset column is the last five, the percentage the four before the two-space gap.
+  for (const r of rows) assert.equal(r.slice(-5), "   6D")
+  assert.equal(rows[0].slice(-11, -7), "100%")
+  assert.equal(rows[1].slice(-11, -7), "  4%")
+  assert.equal(rows[2].slice(-11, -7), "   —")
 })
 
 test("suppresses a reset that is exactly one window away at 0% — Codex fabricates it", () => {
   const win = fiveHour({ percent: 0, resetsAt: Math.floor(now / 1000) + 300 * 60 })
   assert.ok(isDerivedReset(win, now))
-  assert.equal(row(win, 30, now), "5h    0%")
+  const line = strip(agentRow("codex", snap([win]), 30, now))
+  assert.equal(line.trimEnd(), "CODEX" + " ".repeat(16) + "0%", "the figure stands, the reset does not")
+  assert.equal(line.length, 30, "the row keeps its width, the reset column merely blank")
 })
 
 test("keeps a real reset at 0% — Grok is unmetered, not unknown", () => {
   // Grok's own /usage prints "Weekly limit: 0%" and "Next reset" together.
   const win = sevenDay({ percent: 0, resetsAt: Math.floor((now + 1.4 * DAY) / 1000) })
   assert.ok(!isDerivedReset(win, now))
-  assert.ok(row(win, 30, now).endsWith("1D"))
+  assert.ok(strip(agentRow("grok", snap([win]), 30, now)).endsWith("1D"))
 })
 
 test("keeps at least one space when the row is cramped", () => {
-  assert.ok(row(sevenDay(), 8, now).includes(" "))
-})
-
-const snap = (windows: QuotaWindow[]): QuotaSnapshot => ({
-  agent: "codex", sessionId: null, plan: null, windows, credits: null,
-  observedAt: now, source: "rollout",
-})
-
-test("a provider block is its name then one row per window", () => {
-  const lines = block("claude", snap([fiveHour(), sevenDay()]), 30, now)
-  assert.equal(lines[0], "CLAUDE")
-  assert.equal(lines.length, 3)
-  assert.ok(lines[1].startsWith("5h"))
-  assert.ok(lines[2].endsWith("6D"))
-})
-
-test("a provider with no reading collapses to one line, not to nothing", () => {
-  // Vanishing would be ambiguous — "not installed" and "collector stopped" would look alike.
-  const lines = block("codex", null, 30, now)
-  assert.equal(lines.length, 1)
-  assert.ok(lines[0].startsWith("CODEX"))
-  assert.ok(lines[0].endsWith("\u2014"))
-  assert.equal(lines[0].length, 30)
-})
-
-test("a reading with zero windows also collapses", () => {
-  const lines = block("grok", snap([]), 30, now)
-  assert.equal(lines.length, 1)
+  assert.ok(strip(agentRow("claude", snap([sevenDay()]), 8, now)).includes(" "))
 })

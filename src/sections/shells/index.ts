@@ -1,9 +1,8 @@
 import { homedir } from "node:os"
 import { join } from "node:path"
-import { VISIBLE } from "../types.js"
 import type { Section, SectionContext } from "../types.js"
 import type { ShellSnapshot } from "./types.js"
-import { shellItems, shellsBlock, shellsHead } from "./format.js"
+import { shellItems } from "./format.js"
 import { CLAUDE_SESSIONS, readClaudeShells } from "./sources/claude.js"
 import { readCodexShells } from "./sources/codex.js"
 import { readGrokShells } from "./sources/grok.js"
@@ -25,7 +24,7 @@ export function shellsSection(): Section {
 
   return {
     id: "shells",
-    scrollable: true,
+    placement: "top",
 
     watch: () => [
       CLAUDE_SESSIONS,
@@ -55,19 +54,12 @@ export function shellsSection(): Section {
       snapshot = { agent, running, observedAt: Date.now() }
     },
 
-    render(width, style) {
-      if (!subject) return []
-      return shellsBlock(snapshot, width, style)
-    },
-
+    // No total row: the figure would only recount the rows under it. Nothing running means no
+    // rows at all rather than a dash — an empty list here is the ordinary state, not a gap.
     regions(width, style) {
       if (!subject) return []
-      const running = snapshot?.running ?? null
-      return [{
-        head: ["", ...shellsHead(running, width, style)],
-        body: shellItems(running, width, style),
-        maxBody: VISIBLE,
-      }]
+      const rows = shellItems(snapshot?.running ?? null, width, style)
+      return rows.length ? [{ head: rows, body: [] }] : []
     },
   }
 }

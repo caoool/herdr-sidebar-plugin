@@ -31,16 +31,6 @@ export function resetText(win: QuotaWindow, now: number = Date.now()): string {
 }
 
 /**
- * One window, one row: label and percentage on the left, reset right-aligned.
- *
- *   5h   12%              00:10
- *   7d   11%                 6D
- *
- * No gauge — at sidebar widths a bar carries less information than the number beside it.
- * A null percentage renders as an em dash rather than 0: a confident zero is worse than an
- * honest blank, and Grok's unified-billing accounts report no percentage at all.
- */
-/**
  * Whether a reset is computed rather than reported.
  *
  * At zero usage Codex returns `resets_at` as exactly now + one window, which drifts with the
@@ -57,56 +47,60 @@ export function isDerivedReset(win: QuotaWindow, now: number = Date.now()): bool
   return Math.abs(secondsAway - win.windowMinutes * 60) < 90
 }
 
-export function row(
-  win: QuotaWindow,
-  width: number,
-  now: number = Date.now(),
-  paint: (text: string, percent: number | null) => string = (t) => t,
-): string {
-  // Right-align the figure in a fixed field so percentages line up on the % across
-  // providers — "4%" under "15%" reads as a column only if the digits agree.
-  const pct = (win.percent === null ? "—" : `${Math.round(win.percent)}%`).padStart(4)
-  const label = win.label.padEnd(3)
-  const right = isDerivedReset(win, now) ? "" : resetText(win, now)
-  // Padding is computed from PLAIN widths. Escape sequences occupy no columns, so measuring
-  // the painted string would push every coloured row out of alignment.
-  const gap = Math.max(1, width - displayWidth(label) - 1 - displayWidth(pct) - displayWidth(right))
-  const line = `${label} ${paint(pct, win.percent)}` + " ".repeat(gap) + right
-  return right ? line : line.trimEnd()
+/**
+ * One agent, one row: its name, its utilisation, and when that window resets.
+ *
+ *   CLAUDE              11%     6D
+ *   CODEX                4%     0D
+ *   GROK                  —     1D
+ *
+ * Three columns rather than a block per agent. Quota is account-wide, so all three are always
+ * shown — an agent that vanished would be ambiguous between "not installed", "never used" and
+ * "the reading failed", and the last is the one worth noticing.
+ *
+ * No gauge: at sidebar widths a bar carries less information than the number beside it. A null
+ * percentage renders as an em dash rather than 0, because a confident zero is worse than an
+ * honest blank — Grok's unified-billing accounts report no percentage at all.
+ */
+const PERCENT_COLUMNS = 4
+const RESET_COLUMNS = 5
+/** The percentage field, the gap after it, and the reset field. */
+const VALUE_COLUMNS = PERCENT_COLUMNS + 2 + RESET_COLUMNS
+
+/**
+ * The window an agent is judged by, when it reports more than one.
+ *
+ * The longest, chosen by its reported duration and never by its label. Claude reports a 5h and a
+ * 7d window, Codex a primary and a secondary — and Codex has already moved its secondary from
+ * 10080 minutes to 43200 server-side without notice, so keying off the word "7d" would silently
+ * pick the wrong row the day it moves again.
+ */
+export function longestWindow(windows: QuotaWindow[]): QuotaWindow | null {
+  if (!windows.length) return null
+  return windows.reduce((best, w) => ((w.windowMinutes ?? 0) >= (best.windowMinutes ?? 0) ? w : best))
 }
 
 const DISPLAY: Record<ProviderKind, string> = { claude: "CLAUDE", codex: "CODEX", grok: "GROK" }
 
-/**
- * One provider's block: a name, then a row per reported window.
- *
- * Quota belongs to an account rather than to a pane, so every provider is shown in every
- * sidebar — the Codex number is the same whether you are looking at it from a Codex pane or
- * a Claude one.
- *
- * A provider with no reading collapses to a single "NAME  —" line rather than vanishing.
- * Disappearing would be ambiguous: it could mean "not installed", "never used", or "the
- * collector is not running", and the last of those is the one worth noticing.
- */
-export function block(
+export function agentRow(
   agent: ProviderKind,
   snap: QuotaSnapshot | null,
   width: number,
-  now = Date.now(),
+  now: number = Date.now(),
   style: Style = { bold: (s) => s, paint: (t) => t },
-): string[] {
-  const name = DISPLAY[agent]
+): string {
   const finish = style.line ?? ((s: string) => s)
-  // The provider name says which figures these are; the figures are what is being read.
-  const heading = (style.label ?? style.bold)(name)
-  if (!snap || snap.windows.length === 0) {
-    // Gap measured from the plain name, for the same reason as in row().
-    const empty = heading + " ".repeat(Math.max(1, width - displayWidth(name) - 1)) + "\u2014"
-    return [finish(empty)]
-  }
-  return [
-    finish(heading),
-    ...snap.windows.map((w) => finish(row(w, width, now, style.paint))),
-  ]
-}
+  const asLabel = style.label ?? style.bold
+  const name = DISPLAY[agent]
 
+  const win = snap ? longestWindow(snap.windows) : null
+  const percent = win?.percent ?? null
+  const figure = (percent === null ? "\u2014" : `${Math.round(percent)}%`).padStart(PERCENT_COLUMNS)
+  // A reset Codex fabricated at zero usage says nothing; it drifts with the wall clock.
+  const reset = (win && !isDerivedReset(win, now) ? resetText(win, now) : "").padStart(RESET_COLUMNS)
+
+  // Padding is computed from PLAIN widths. Escape sequences occupy no columns, so measuring the
+  // painted string would push every coloured row out of alignment.
+  const gap = Math.max(1, width - displayWidth(name) - VALUE_COLUMNS)
+  return finish(asLabel(name) + " ".repeat(gap) + style.paint(figure, percent) + "  " + reset)
+}

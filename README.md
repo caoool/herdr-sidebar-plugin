@@ -41,16 +41,16 @@ Codex and Claude need no setup — the collector installs itself on the first se
 after install. Grok is the one agent that will not give its figure away for free; see below.
 
 ```
-  CLAUDE
-  5h   15%              00:10
-  7d   11%                 6D
-
-  CODEX
-  7d    4%                 0D
-
-  GROK
-  7d     —                 1D
+  CLAUDE                11%     6D
+  CODEX                  4%     0D
+  GROK                    —     1D
 ```
+
+One row per agent, always all three. The window is the longest each agent reports, chosen by its
+reported *duration* rather than its label — Claude reports a 5h and a 7d, Codex a primary and a
+secondary, and Codex has already moved its secondary from 10080 minutes to 43200 server-side
+without notice, so keying off the word "7d" would silently pick the wrong row the day it moves
+again.
 
 The agent running in this pane leads and renders at full strength — bold name, full-intensity
 ramp. Every other agent's block recedes: the name loses its weight and its rows are dimmed,
@@ -124,21 +124,25 @@ agent in the tab there is nothing to describe, and the block is omitted rather t
 dashes.
 
 ```
-  SESSION   Refactor the parser
+  gpt-5.6-sol | high  ● on-request
+  72% | 258K                41 t/s
 
-  MODEL      gpt-5.6-sol | high
-  MODE              ● on-request
-  CONTEXT             72% | 258K
-  SPEED                   41 t/s
-
-  WORKSPACE          my-project
-  BRANCH                   main
-  WORKTREE            feature-x
-  DIFF                    ↑2 ↓1
+  my-project
+  main/feature-x             ↑2 ↓1
 ```
 
-The session's name rides the heading rather than taking a row: it names the block, which is what
-a heading is for, and every row below is a fact about it.
+No row labels. Every value here is self-describing — a percentage against a token count, a rate
+with its unit — so a word naming the row would cost columns the figures can use. What a row means
+comes from where it sits, which is why this block is pinned to the foot of the pane and never
+moves.
+
+A two-part value is never cut mid-separator. At 26 columns `gpt-5.6-sol | high` becomes
+`gpt-5.6-sol`, not `gpt-5.6-sol | ` — a separator joining nothing reads as a rendering bug rather
+than as a value that did not fit, so the second half is dropped whole. The worktree behind the
+branch gives way the same way.
+
+The session name rides the top of the pane on its own row rather than any block: it names the
+pane, which is the one thing on screen that is not a figure.
 
 The context percentage uses the same ramp as quota, shifted: red starts at 90 rather than 80. A
 context window and a quota window are not equally urgent at the same reading — quota at 80%
@@ -284,14 +288,51 @@ bin/install-collector.mjs    chain-safe installer, backs up settings.json
 bin/startup.mjs              startup hook: clears stale pane locks, ensures the collector
 src/pane.ts                  resolves the pane's agent, drives sections, stacks output
 src/herdr.ts                 snapshot client, pane identity, subject resolution
+src/layout.ts                the three bands, and how they yield when the pane is short
 src/ansi.ts                  styling primitives and the utilisation colour ramp
 src/tail.ts                  bounded reads of append-only logs
+src/width.ts                 display columns, so a CJK name does not wrap the frame
 src/sections/types.ts        the Section interface
-src/sections/quota/          the quota section: sources, formatting, types
+src/sections/quota/          quota, session, tools, todos, shells, subagents — one each
 ```
 
 Adding a section is a directory under `src/sections` and one entry in `SECTIONS` in
 `src/pane.ts`. Sections own their sources and rendering; the pane owns neither.
+
+## How the pane is laid out
+
+Three bands, not an even split. A section declares which one it belongs to and the pane does the
+rest.
+
+```
+  session name          banner   never scrolls, never moves
+  quota                 top      three rows, one per agent
+  shells                top      hidden when nothing is running
+  subagents             top      hidden when nothing is in flight
+  todos                 flex     takes every row the other two leave
+  tools · mcp           bottom   three items each, the rest scrollable
+  model · context       bottom   pinned to the foot
+  workspace · branch    bottom   pinned to the foot
+```
+
+There are no section headings. What survives of them is a dim total row sitting directly on the
+list it counts — `tools 108`, `mcp 5/6`, `todos 3/9` — and only where the figure says something
+the rows do not. Shells and subagents get none, because theirs would just recount the rows under
+it.
+
+Regions are separated by a single blank row and never by a rule. With the headings gone the blank
+is the only structure the pane has, and a rule across 34 columns drew a line between two blocks
+that already read as separate while competing with the figures.
+
+The bands are ordered by what may be sacrificed. A pane too short for everything drops whole
+regions off the front of the bottom band — whole, because trimming one by rows strands its
+overflow marker, a row claiming to hide items from a list that is no longer on screen. The
+workspace block is the last to go, and only then does the top band give way, from its foot, so the
+banner and the quota survive.
+
+Todos is the section that expands, so it is also the one that keeps a floor. Without that, a
+capped list holds its three rows while the section meant to fill the pane is squeezed to nothing —
+the exact inversion of what makes it the flexible one.
 
 ## Two things that are easy to get wrong
 

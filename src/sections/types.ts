@@ -5,32 +5,39 @@ import type { Region } from "../layout.js"
 /**
  * A sidebar section.
  *
- * The sidebar is a stack of independent sections — quota today, connected MCP servers and
- * the agent's task list later. Each owns its own data sources and its own rendering, so
- * adding one never touches the others or the pane process.
+ * The sidebar is a stack of independent sections. Each owns its own data sources and its own
+ * rendering, so adding one never touches the others or the pane process.
  *
  * Sections are deliberately pull-free where the agents allow it: `watch()` names the files
  * the agents already write, and the pane re-reads only when one of them changes.
  */
+
 /**
- * Items a scrollable region shows before the rest has to be scrolled to.
+ * Items a capped region shows before the rest has to be scrolled to.
  *
  * Shared rather than repeated per section: the number is a property of the sidebar's shape, not
- * of any one list, and four copies of it would drift the first time one was tuned.
+ * of any one list, and four copies of it would drift the first time one was tuned. It counts
+ * items, not rows — the overflow marker is an extra row, so raising this by one shows one more.
  */
-export const VISIBLE = 5
+export const VISIBLE = 3
+
+/**
+ * Which band of the pane a section's rows belong to.
+ *
+ *  - `top`    pinned against the top, under the banner. Quota, and what is running right now.
+ *  - `flex`   takes every row the other two leave. At most one section may claim this.
+ *  - `bottom` pinned against the foot, so the model and the branch are always in one place.
+ *
+ * A pane too short for everything drops whole `bottom` regions from the front, then trims the
+ * `top` band from its foot. `flex` keeps a floor throughout — it is the section that expands, so
+ * it must not be the one squeezed to nothing.
+ */
+export type Placement = "top" | "flex" | "bottom"
 
 export type Section = {
   id: string
 
-  /**
-   * Render into the pane's scroll region rather than the pinned block.
-   *
-   * At most one section is scrollable. Everything else renders whole and stays put, so the
-   * readings you glance at — quota, context, speed — never scroll out of view while you are
-   * reading a long list.
-   */
-  scrollable?: boolean
+  placement: Placement
 
   /**
    * Files and directories whose changes should trigger a refresh. Missing paths are fine —
@@ -42,15 +49,22 @@ export type Section = {
   /** Re-read sources. Must not throw; a failing source becomes a missing reading. */
   refresh(ctx: SectionContext): Promise<void>
 
-  /** Render at the given content width. Returns lines without the pane's left indent. */
-  render(width: number, style: Style): string[]
+  /**
+   * The section's rows at the given content width, without the pane's left indent.
+   *
+   * A section may contribute several regions — TOOLS and MCP are two lists that must scroll
+   * independently — and each is separated from its neighbours by a single blank row, which the
+   * pane inserts. An empty region is dropped rather than costing that separator.
+   */
+  regions(width: number, style: Style): Region[]
 
   /**
-   * Independently scrollable regions, for a section whose parts must not push each other off the
-   * screen. Each entry scrolls on its own offset and carries its own overflow marker. A section
-   * that defines this is laid out from it instead of from `render`.
+   * A row that rides at the very top of the pane, above every region.
+   *
+   * Only the session name uses this. It named the block back when the block had a heading; with
+   * the headings gone it names the pane, which is the one thing on screen that is not a figure.
    */
-  regions?(width: number, style: Style): Region[]
+  banner?(width: number, style: Style): string[]
 }
 
 export type SectionContext = {

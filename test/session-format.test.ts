@@ -1,17 +1,14 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { abbreviate, labelled, sessionBlock, cleanModelName, divergence } from "../src/sections/session/format.js"
+import {
+  abbreviate, best, cleanModelName, divergence, labelled, modelRows,
+  sessionBanner, spread, tally, workspaceRows,
+} from "../src/sections/session/format.js"
 import { PLAIN, TERMINAL } from "../src/ansi.js"
+import { displayWidth } from "../src/width.js"
 import type { ProjectInfo, SessionInfo } from "../src/sections/session/types.js"
 
 const strip = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "")
-
-/**
- * Find a row by its label, so adding or reordering rows does not break every assertion.
- * The trailing space matters: "MODE" is a prefix of "MODEL".
- */
-const row = (lines: string[], label: string): string =>
-  lines.find((l) => strip(l).startsWith(label + " ")) ?? ""
 
 const project: ProjectInfo = {
   workspace: "herdr-sidebar-plugin", branch: "main", worktree: null, diff: "↑2 ↓1",
@@ -22,6 +19,11 @@ const info: SessionInfo = {
   permissionMode: "on-request", permissionModeIsGlobal: false, sandboxEnabled: true,
   context: { usedPercent: 82, windowSize: 258_400 }, outputPerSecond: 155, observedAt: Date.now(),
 }
+
+const model = (over: Partial<SessionInfo> = {}, width = 34, style = PLAIN): string =>
+  modelRows({ ...info, ...over }, width, style)[0]
+const context = (over: Partial<SessionInfo> = {}, width = 34, style = PLAIN): string =>
+  modelRows({ ...info, ...over }, width, style)[1]
 
 test("token counts abbreviate without noise", () => {
   assert.equal(abbreviate(258_400), "258K")
@@ -53,125 +55,133 @@ test("painting a segment never changes the row's width", () => {
   assert.equal(strip(painted), plain)
 })
 
-test("the block is the four specified rows, titled, with no gauge", () => {
-  const lines = sessionBlock(info, project, 30, PLAIN)
-  assert.ok(lines[0].startsWith("SESSION"), "the heading leads, now carrying the name")
-  assert.equal(lines[1], "")
-  assert.ok(row(lines, "MODEL").endsWith("gpt-5.6-sol | high"))
-  assert.ok(row(lines, "MODE").endsWith("● on-request"))
-  assert.ok(row(lines, "CONTEXT").endsWith("82% | 258K"))
-  assert.ok(row(lines, "SPEED").endsWith("155 t/s"))
-  for (const l of lines) assert.ok(!l.includes("█") && !l.includes("░"), `gauge left in: ${l}`)
+test("spread puts one value left and the other flush right", () => {
+  const line = spread([[{ text: "Opus 5 | high" }]], [{ text: "● on-request" }], 34)
+  assert.ok(line.startsWith("Opus 5 | high"))
+  assert.ok(line.endsWith("● on-request"))
+  assert.equal(displayWidth(line), 34)
+})
+
+test("a cramped two-part value drops its second half rather than cutting the separator", () => {
+  // "Opus 5 | " with a separator joining nothing reads as a rendering bug, not as a value that
+  // did not fit.
+  const full = [{ text: "gpt-5.6-sol" }, { text: " | " }, { text: "high" }]
+  const bare = [{ text: "gpt-5.6-sol" }]
+  assert.deepEqual(best([full, bare], 30), full, "it fits whole, so it is used whole")
+  assert.deepEqual(best([full, bare], 12), bare, "it does not, so the second half goes")
+})
+
+test("the last candidate is still cut when even it will not fit", () => {
+  const only = [{ text: "a-very-long-model-identifier" }]
+  const got = best([only], 8)
+  assert.ok(displayWidth(got.map((s) => s.text).join("")) <= 8)
+})
+
+test("the model row is model, effort and mode — no labels", () => {
+  const line = model()
+  assert.ok(line.startsWith("gpt-5.6-sol | high"), line)
+  assert.ok(line.endsWith("● on-request"), line)
+  assert.doesNotMatch(line, /MODEL|MODE\b/)
+  assert.equal(displayWidth(line), 34)
+})
+
+test("the context row is usage and speed — no labels, no gauge", () => {
+  const line = context()
+  assert.ok(line.startsWith("82% | 258K"), line)
+  assert.ok(line.endsWith("155 t/s"), line)
+  assert.ok(!line.includes("█") && !line.includes("░"), `gauge left in: ${line}`)
+  assert.equal(displayWidth(line), 34)
 })
 
 test("an unsandboxed agent shows an unlit dot, not a missing one", () => {
-  const mode = row(sessionBlock({ ...info, sandboxEnabled: false }, project, 30, PLAIN), "MODE")
-  assert.ok(mode.endsWith("○ on-request"), mode)
+  assert.ok(model({ sandboxEnabled: false }).endsWith("○ on-request"))
 })
 
 test("unknown sandbox state is a dash rather than a guessed dot", () => {
-  const mode = row(sessionBlock({ ...info, sandboxEnabled: null }, project, 30, PLAIN), "MODE")
-  assert.ok(mode.endsWith("— on-request"), mode)
+  assert.ok(model({ sandboxEnabled: null }).endsWith("— on-request"))
 })
 
 test("context reaches red later than quota does", () => {
   // Quota at 82% means most of a period is gone with no recourse but to wait. Context at 82%
   // is ordinary working territory, so it stays orange and turns red only near compaction.
-  const orange = row(sessionBlock(info, project, 30, TERMINAL), "CONTEXT")
-  assert.match(orange, /\x1b\[38;5;208m82%/)
-
-  const near = { ...info, context: { usedPercent: 90, windowSize: 258_400 } }
-  const red = row(sessionBlock(near, project, 30, TERMINAL), "CONTEXT")
-  assert.match(red, /\x1b\[38;5;203m90%/)
+  assert.match(context({}, 34, TERMINAL), /\x1b\[38;5;208m82%/)
+  assert.match(
+    context({ context: { usedPercent: 90, windowSize: 258_400 } }, 34, TERMINAL),
+    /\x1b\[38;5;203m90%/)
 })
 
 test("a low context reading is green, like a low quota reading", () => {
-  const low = { ...info, context: { usedPercent: 12, windowSize: 1_000_000 } }
-  const context = row(sessionBlock(low, project, 30, TERMINAL), "CONTEXT")
-  assert.match(context, /\x1b\[38;5;41m12%/)
+  assert.match(
+    context({ context: { usedPercent: 12, windowSize: 1_000_000 } }, 34, TERMINAL),
+    /\x1b\[38;5;41m12%/)
 })
 
 test("the sandbox dot is lit green and unlit dim", () => {
-  const on = row(sessionBlock(info, project, 30, TERMINAL), "MODE")
-  assert.match(on, /\x1b\[38;5;41m●/)
-  const off = row(sessionBlock({ ...info, sandboxEnabled: false }, project, 30, TERMINAL), "MODE")
-  assert.match(off, /\x1b\[2m○/)
+  assert.match(model({}, 34, TERMINAL), /\x1b\[38;5;41m●/)
+  assert.match(model({ sandboxEnabled: false }, 34, TERMINAL), /\x1b\[2m○/)
 })
 
 test("half a two-part value still renders the other half", () => {
-  const model = row(sessionBlock({ ...info, effort: null }, project, 30, PLAIN), "MODEL")
-  assert.ok(model.endsWith("gpt-5.6-sol"), model)
-  const partial = { ...info, context: { usedPercent: null, windowSize: 258_400 } }
-  const context = row(sessionBlock(partial, project, 30, PLAIN), "CONTEXT")
-  assert.ok(context.endsWith("— | 258K"), context)
+  assert.ok(model({ effort: null }).startsWith("gpt-5.6-sol"))
+  assert.ok(context({ context: { usedPercent: null, windowSize: 258_400 } }).startsWith("— | 258K"))
 })
 
-test("no session means no block at all", () => {
-  assert.deepEqual(sessionBlock(null, null, 30, PLAIN), [])
+test("no session means no model rows at all", () => {
+  assert.deepEqual(modelRows(null, 30, PLAIN), [])
 })
 
-test("row labels are dimmed, values are not", () => {
-  const model = row(sessionBlock(info, project, 30, TERMINAL), "MODEL")
-  assert.match(model, /^\x1b\[38;5;250mMODEL\x1b\[0m/)
-  assert.ok(model.endsWith("gpt-5.6-sol | high"), "the value keeps full strength")
+test("no project means no workspace rows at all", () => {
+  assert.deepEqual(workspaceRows(null, 30, PLAIN), [])
 })
 
 test("styling leaves every row the same width", () => {
-  const plain = sessionBlock(info, project, 30, PLAIN)
-  const styled = sessionBlock(info, project, 30, TERMINAL).map(strip)
-  assert.deepEqual(styled, plain)
+  assert.deepEqual(modelRows(info, 34, TERMINAL).map(strip), modelRows(info, 34, PLAIN))
+  assert.deepEqual(workspaceRows(project, 34, TERMINAL).map(strip), workspaceRows(project, 34, PLAIN))
 })
 
-test("the session name rides the heading, flush right, coloured like any value", () => {
-  const [heading] = sessionBlock(info, project, 34, TERMINAL)
-  assert.match(strip(heading), /^SESSION\s+Herdr sidebar plugin$/)
-  // Plain, like the branch value beneath it — no escape wraps the name itself.
-  assert.ok(heading.endsWith("Herdr sidebar plugin"), heading)
-  assert.equal(strip(heading).length, 34)
+test("the session name is the banner, alone at the top of the pane", () => {
+  const [banner] = sessionBanner(info, 34, PLAIN)
+  assert.equal(banner, "Herdr sidebar plugin")
+  assert.doesNotMatch(banner, /SESSION/)
 })
 
-test("an unnamed session leaves the heading bare rather than trailing a dash", () => {
-  const [heading, , first] = sessionBlock({ ...info, name: null }, project, 30, PLAIN)
-  assert.equal(heading, "SESSION")
-  assert.ok(first.startsWith("MODEL"))
+test("an unnamed session has no banner rather than an empty one", () => {
+  assert.deepEqual(sessionBanner({ ...info, name: null }, 30, PLAIN), [])
+  assert.deepEqual(sessionBanner(null, 30, PLAIN), [])
 })
 
 test("a long name is cut with an ellipsis, keeping its distinguishing start", () => {
-  const long = { ...info, name: "Herdr sidebar plugin validation and rollout" }
-  const [heading] = sessionBlock(long, project, 30, PLAIN)
-  assert.equal(heading.length, 30)
-  assert.ok(heading.endsWith("…"), heading)
-  assert.ok(heading.includes("Herdr sidebar"))
+  const [banner] = sessionBanner({ ...info, name: "Herdr sidebar plugin validation and rollout" }, 30, PLAIN)
+  assert.ok(displayWidth(banner) <= 30)
+  assert.ok(banner.endsWith("…"), banner)
+  assert.ok(banner.includes("Herdr sidebar"))
 })
 
-test("project rows follow the session rows after a blank line", () => {
-  const lines = sessionBlock(info, project, 34, PLAIN)
-  const labels = lines.map((l) => l.split(" ")[0]).filter(Boolean)
-  assert.deepEqual(labels, ["SESSION", "MODEL", "MODE", "CONTEXT", "SPEED", "WORKSPACE", "BRANCH", "WORKTREE", "DIFF"])
-  // exactly one blank line inside the block, separating the two groups
-  assert.equal(lines.filter((l) => l === "").length, 2)
-  assert.equal(lines[1], "", "the heading's own blank row")
+test("the workspace block is the name, then the branch with its divergence", () => {
+  const [name, branch] = workspaceRows(project, 34, PLAIN)
+  assert.equal(name, "herdr-sidebar-plugin")
+  assert.ok(branch.startsWith("main"))
+  assert.ok(branch.endsWith("↑2 ↓1"))
+  assert.doesNotMatch(branch, /WORKSPACE|BRANCH|DIFF/)
 })
 
-test("project values render flush right like the rest", () => {
-  const lines = sessionBlock(info, project, 34, PLAIN)
-  assert.ok(row(lines, "WORKSPACE").endsWith("herdr-sidebar-plugin"))
-  assert.ok(row(lines, "BRANCH").endsWith("main"))
-  assert.ok(row(lines, "DIFF").endsWith("↑2 ↓1"))
+test("a worktree rides the branch behind a slash", () => {
+  const [, branch] = workspaceRows({ ...project, worktree: "feature-x" }, 34, PLAIN)
+  assert.ok(branch.startsWith("main/feature-x"), branch)
 })
 
-test("worktree and diff keep their rows when empty, showing a dash", () => {
-  // The table's shape stays fixed so the eye learns where to look; blanks are explicit.
-  const lines = sessionBlock(info, { ...project, worktree: null, diff: "" }, 34, PLAIN)
-  assert.ok(row(lines, "WORKTREE").endsWith("—"))
-  assert.ok(row(lines, "DIFF").endsWith("—"))
+test("a cramped branch row drops the worktree, never the branch", () => {
+  const [, branch] = workspaceRows({ ...project, worktree: "a-long-worktree-name" }, 20, PLAIN)
+  assert.ok(strip(branch).startsWith("main"), branch)
+  assert.ok(!branch.includes("main/a-long"), "the worktree gave way whole")
+  assert.equal(displayWidth(branch), 20)
 })
 
-test("the project half stands alone when there is no agent reading", () => {
-  const lines = sessionBlock(null, project, 34, PLAIN)
-  assert.equal(lines[0], "SESSION")
-  assert.ok(row(lines, "WORKSPACE").endsWith("herdr-sidebar-plugin"))
-  assert.equal(lines.filter((l) => l === "").length, 1, "no separator with nothing to separate")
+test("no divergence prints nothing rather than zeros", () => {
+  // A branch level with its upstream has nothing to report, and zeros would make the ordinary
+  // case the loudest row.
+  const [, branch] = workspaceRows({ ...project, diff: "" }, 34, PLAIN)
+  assert.equal(branch.trimEnd(), "main")
 })
 
 test("divergence reads like herdr's own, and is silent when there is none", () => {
@@ -183,23 +193,29 @@ test("divergence reads like herdr's own, and is silent when there is none", () =
 })
 
 test("every stand-in dash is dimmed, wherever it appears", () => {
-  const bare = sessionBlock(
+  const bare = modelRows(
     { ...info, model: null, effort: null, permissionMode: null, sandboxEnabled: null,
       context: { usedPercent: null, windowSize: null }, outputPerSecond: null },
-    { workspace: null, branch: null, worktree: null, diff: "" },
     34, TERMINAL,
-  )
-  for (const label of ["MODEL", "MODE", "CONTEXT", "SPEED", "WORKSPACE", "BRANCH", "WORKTREE", "DIFF"]) {
-    const line = row(bare, label)
-    assert.ok(line.includes("—"), `${label} should show a dash`)
-    assert.match(line, /\x1b\[2m—/, `${label}'s dash should be dimmed: ${JSON.stringify(line)}`)
+  ).concat(workspaceRows({ workspace: null, branch: null, worktree: null, diff: "" }, 34, TERMINAL))
+  for (const line of bare) {
+    assert.ok(strip(line).includes("—"), `should show a dash: ${JSON.stringify(strip(line))}`)
+    assert.match(line, /\x1b\[2m—/, `dash should be dimmed: ${JSON.stringify(line)}`)
   }
 })
 
 test("dimming a dash does not change the row's width", () => {
-  const bare = { ...info, model: null, effort: null }
-  assert.equal(
-    strip(row(sessionBlock(bare, project, 34, TERMINAL), "MODEL")),
-    row(sessionBlock(bare, project, 34, PLAIN), "MODEL"),
-  )
+  const bare = { model: null, effort: null }
+  assert.equal(strip(model(bare, 34, TERMINAL)), model(bare, 34, PLAIN))
+})
+
+test("a tally is dimmed throughout — it is context for a list, not a reading", () => {
+  const line = tally("tools", "108", 30, TERMINAL)
+  assert.equal(strip(line), labelled("tools", [{ text: "108" }], 30))
+  assert.match(line, /^\x1b\[2mtools\x1b\[0m/, "the name is dimmed")
+  assert.match(line, /\x1b\[2m108\x1b\[0m$/, "so is the figure")
+})
+
+test("a tally with nothing to count shows a dash", () => {
+  assert.ok(strip(tally("mcp", null, 30, PLAIN)).endsWith("—"))
 })

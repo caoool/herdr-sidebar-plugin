@@ -28,10 +28,25 @@ import { subagentsSection } from "./sections/subagents/index.js"
 import { toolsSection } from "./sections/tools/index.js"
 import type { Section } from "./sections/types.js"
 import type { PaneAgent } from "./types.js"
-import { compose, type Region, type Span } from "./layout.js"
+import { compose, live, type Frame, type Region, type Span } from "./layout.js"
 import { SAFE_CWD } from "./run.js"
 
-const SECTIONS: Section[] = [quotaSection(), sessionSection(), toolsSection(), todosSection(), shellsSection(), subagentsSection()]
+/**
+ * The stack, in the order it is read down the screen.
+ *
+ * Quota, then what is running right now, pinned to the top. The task list in the middle, taking
+ * whatever is left. Then the lists and readings that describe the session, pinned to the foot —
+ * so the two things glanced at most, the quota at the top and the context and branch at the
+ * bottom, are always in the same place whatever the session is doing.
+ */
+const SECTIONS: Section[] = [
+  quotaSection(),
+  shellsSection(),
+  subagentsSection(),
+  todosSection(),
+  toolsSection(),
+  sessionSection(),
+]
 
 let subject: PaneAgent | null = null
 let dirty = true
@@ -114,28 +129,28 @@ function render() {
   const width = Math.max(18, (process.stdout.columns ?? 34) - 4)
   const height = Math.max(1, (process.stdout.rows ?? 40) - 2)
 
-  const pinned: string[] = []
-  const regions: Region[] = []
+  // An empty region is dropped rather than kept, so it cannot cost the blank row the pane puts
+  // between regions — a section with nothing to say leaves no trace at all.
+  const bands: Record<"top" | "flex" | "bottom", Region[]> = { top: [], flex: [], bottom: [] }
+  const banner: string[] = []
   for (const section of SECTIONS) {
-    if (section.regions) {
-      for (const region of section.regions(width, TERMINAL)) {
-        if (region.head.length || region.body.length) regions.push(region)
-      }
-      continue
-    }
-    const lines = section.render(width, TERMINAL)
-    if (!lines.length) continue
-    if (pinned.length) pinned.push("")
-    pinned.push(...lines)
+    banner.push(...(section.banner?.(width, TERMINAL) ?? []))
+    bands[section.placement].push(...section.regions(width, TERMINAL).filter(live))
   }
-  if (pinned.length && regions.length) pinned.push("")
 
-  const composed = compose(pinned, regions, height, width, offsets, focus, TERMINAL)
+  const frame: Frame = {
+    banner,
+    top: bands.top,
+    // At most one section may flex; a second would have nothing left to take.
+    flex: bands.flex[0] ?? null,
+    bottom: bands.bottom,
+  }
+
+  const composed = compose(frame, height, width, offsets, TERMINAL)
   offsets = composed.offsets
   spans = composed.spans
-  if (focus >= regions.length) focus = 0
-  const out = composed.lines
-  process.stdout.write("\x1b[2J\x1b[H\n" + out.map((l) => (l ? `  ${l}` : l)).join("\n"))
+  if (focus >= spans.length) focus = 0
+  process.stdout.write("\x1b[2J\x1b[H\n" + composed.lines.map((l) => (l ? `  ${l}` : l)).join("\n"))
 }
 
 // Watch what the agents write rather than polling anything. Debounced because Codex appends

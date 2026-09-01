@@ -1,11 +1,11 @@
 import { join } from "node:path"
 import { homedir } from "node:os"
 import { stateDir } from "../../herdr.js"
-import { TERMINAL, TERMINAL_INACTIVE, type Style } from "../../ansi.js"
+import { TERMINAL, TERMINAL_INACTIVE } from "../../ansi.js"
 import type { ProviderKind } from "../../types.js"
 import type { Section, SectionContext } from "../types.js"
 import type { QuotaSnapshot } from "./types.js"
-import { block } from "./format.js"
+import { agentRow } from "./format.js"
 import { sanitize } from "./freshness.js"
 import { readClaude, claudeDir } from "./sources/claude.js"
 import { readClaudeUsage } from "./sources/claude-usage.js"
@@ -65,6 +65,7 @@ export function quotaSection(): Section {
 
   return {
     id: "quota",
+    placement: "top",
 
     watch: () => [
       claudeDir(),
@@ -88,22 +89,21 @@ export function quotaSection(): Section {
       subject = ctx.subject
     },
 
-    render(width, style) {
+    regions(width, style) {
       const order = subject
         ? [subject.agent, ...ORDER.filter((a) => a !== subject!.agent)]
         : ORDER
-      // Titled like the session section, with a blank row so the heading reads as a heading
-      // rather than as another provider.
-      const out: string[] = [style.bold("QUOTA"), ""]
-      for (const agent of order) {
-        if (out.length > 2) out.push("")
+      const now = Date.now()
+      // One row per agent, all three always, the pane's own agent leading. No heading: the
+      // names are the only words in the block and they already say what the figures are.
+      const rows = order.map((agent) => {
         // With no agent in this tab there is nothing to be secondary to, so everything reads
         // at full strength rather than the whole panel receding.
         const forAgent =
           style === TERMINAL && subject && agent !== subject.agent ? TERMINAL_INACTIVE : style
-        out.push(...block(agent, snapshots[agent] ?? null, width, Date.now(), forAgent))
-      }
-      return out
+        return agentRow(agent, snapshots[agent] ?? null, width, now, forAgent)
+      })
+      return [{ head: rows, body: [] }]
     },
   }
 }

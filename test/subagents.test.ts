@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { runningIn as grokRunning } from "../src/sections/subagents/sources/grok.js"
 import { childOf, isFinished } from "../src/sections/subagents/sources/codex.js"
 import { scan } from "../src/sections/subagents/sources/claude.js"
-import { subagentsBlock, subagentItems, subagentsHead } from "../src/sections/subagents/format.js"
+import { subagentItems } from "../src/sections/subagents/format.js"
 import { PLAIN, TERMINAL } from "../src/ansi.js"
 import { displayWidth } from "../src/width.js"
 import type { Subagent } from "../src/sections/subagents/types.js"
@@ -110,13 +110,9 @@ const running: Subagent[] = [
   { id: "2", label: "Review the diff", kind: "general-purpose" },
 ]
 
-test("the heading counts what is in flight", () => {
-  assert.ok(subagentsHead(running, 30, PLAIN)[0].endsWith("2"))
-})
-
-test("nothing in flight is a dash, not a zero", () => {
-  assert.ok(subagentsHead(null, 30, PLAIN)[0].endsWith("—"))
-  assert.ok(subagentsHead([], 30, PLAIN)[0].endsWith("—"))
+test("nothing in flight renders no rows at all, not a dash", () => {
+  assert.deepEqual(subagentItems(null, 30, PLAIN), [])
+  assert.deepEqual(subagentItems([], 30, PLAIN), [])
 })
 
 test("a row shows what the subagent was asked to do", () => {
@@ -138,7 +134,7 @@ test("a kind stands in when there is no description", () => {
 test("every row fits its column budget, including a very long description", () => {
   const long = [{ id: "1", label: "x".repeat(300), kind: null }]
   for (const width of [20, 30, 34]) {
-    for (const line of subagentsBlock({ agent: "claude", running: long, observedAt: 0 }, width, PLAIN)) {
+    for (const line of subagentItems(long, width, PLAIN)) {
       if (!line) continue
       assert.ok(displayWidth(strip(line)) <= width, `width ${width}: ${JSON.stringify(line)}`)
     }
@@ -147,5 +143,5 @@ test("every row fits its column budget, including a very long description", () =
 
 test("styling never changes a row's width", () => {
   const snap = { agent: "grok" as const, running, observedAt: 0 }
-  assert.deepEqual(subagentsBlock(snap, 30, TERMINAL).map(strip), subagentsBlock(snap, 30, PLAIN))
+  assert.deepEqual(subagentItems(snap.running, 30, TERMINAL).map(strip), subagentItems(snap.running, 30, PLAIN))
 })

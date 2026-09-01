@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { runningIn as grokRunning } from "../src/sections/shells/sources/grok.js"
 import { runningIn as codexRunning, commandIn as codexCommand } from "../src/sections/shells/sources/codex.js"
 import { runningShells, commandIn as claudeCommand } from "../src/sections/shells/sources/claude.js"
-import { shellsBlock, shellItems, shellsHead } from "../src/sections/shells/format.js"
+import { shellItems } from "../src/sections/shells/format.js"
 import { PLAIN, TERMINAL } from "../src/ansi.js"
 import { displayWidth } from "../src/width.js"
 import type { Shell } from "../src/sections/shells/types.js"
@@ -135,16 +135,10 @@ const running: Shell[] = [
   { id: "2", kind: "monitor", command: "tail -f /var/log/x.log" },
 ]
 
-test("the heading counts what is running", () => {
-  const [head] = shellsHead(running, 30, PLAIN)
-  assert.ok(head.startsWith("SHELLS"))
-  assert.ok(head.endsWith("2"), head)
-})
-
-test("nothing running is a dash, not a zero", () => {
-  // A zero would be a claim; a dash for a Codex session whose rollout has not been read yet is not.
-  assert.ok(shellsHead(null, 30, PLAIN)[0].endsWith("—"))
-  assert.ok(shellsHead([], 30, PLAIN)[0].endsWith("—"))
+test("nothing running renders no rows at all, not a dash", () => {
+  // An empty list here is the ordinary state. A dash would suggest a reading failed.
+  assert.deepEqual(shellItems(null, 30, PLAIN), [])
+  assert.deepEqual(shellItems([], 30, PLAIN), [])
 })
 
 test("shells and monitors get different glyphs, and the monitor is the lit one", () => {
@@ -165,7 +159,7 @@ test("a command that could not be recovered shows a dash, never a guess", () => 
 test("every row fits its column budget, including a very long command", () => {
   const long = [{ id: "1", kind: "shell" as const, command: "x".repeat(400) }]
   for (const width of [20, 30, 34]) {
-    for (const line of shellsBlock({ agent: "claude", running: long, observedAt: 0 }, width, PLAIN)) {
+    for (const line of shellItems(long, width, PLAIN)) {
       if (!line) continue
       assert.ok(displayWidth(strip(line)) <= width, `width ${width}: ${JSON.stringify(line)}`)
     }
@@ -174,5 +168,5 @@ test("every row fits its column budget, including a very long command", () => {
 
 test("styling never changes a row's width", () => {
   const snap = { agent: "grok" as const, running, observedAt: 0 }
-  assert.deepEqual(shellsBlock(snap, 30, TERMINAL).map(strip), shellsBlock(snap, 30, PLAIN))
+  assert.deepEqual(shellItems(snap.running, 30, TERMINAL).map(strip), shellItems(snap.running, 30, PLAIN))
 })

@@ -1,8 +1,7 @@
-import { labelled, truncate } from "../session/format.js"
-import type { Segment } from "../session/format.js"
+import { tally, truncate } from "../session/format.js"
 import type { Style } from "../../ansi.js"
 import { displayWidth } from "../../width.js"
-import type { Todo, TodoStatus, TodoSnapshot } from "./types.js"
+import type { Todo, TodoStatus } from "./types.js"
 
 const DASH = "—"
 
@@ -20,16 +19,15 @@ const GLYPH: Record<TodoStatus, string> = {
 /** Only work that is underway counts as lit; pending and failed are not achievements. */
 const isLive = (status: TodoStatus): boolean => status === "in_progress"
 
-/** The heading: how many are finished, over how many there are. */
-export function todosHead(todos: Todo[] | null, width: number, style: Style): string[] {
-  const muted = style.muted ?? ((s: string) => s)
+/**
+ * How many are finished, over how many there are.
+ *
+ * Not the row count: a list of nine todos three of which are done is a different situation from
+ * nine untouched ones, and the glyphs say so only once you have counted them.
+ */
+export function todosTally(todos: Todo[] | null, width: number, style: Style): string {
   const done = todos?.filter((t) => t.status === "completed").length ?? 0
-  return [
-    labelled("TODOS", todos && todos.length
-      ? [{ text: `${done}/${todos.length}` }]
-      : [{ text: DASH, paint: muted }], width, style.bold),
-    "",
-  ]
+  return tally("todos", todos && todos.length ? `${done}/${todos.length}` : null, width, style)
 }
 
 /**
@@ -55,12 +53,3 @@ export function todoItems(todos: Todo[] | null, width: number, style: Style): st
   })
 }
 
-/** Both parts stacked, for callers that do not scroll them separately. */
-export function todosBlock(
-  snapshot: TodoSnapshot | null,
-  width: number,
-  style: Style,
-): string[] {
-  const todos = snapshot?.todos ?? null
-  return [...todosHead(todos, width, style), ...todoItems(todos, width, style)]
-}

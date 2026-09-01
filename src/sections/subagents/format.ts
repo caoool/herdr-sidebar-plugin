@@ -1,21 +1,10 @@
-import { labelled, truncate } from "../session/format.js"
+import { truncate } from "../session/format.js"
 import type { Style } from "../../ansi.js"
 import { displayWidth } from "../../width.js"
-import type { Subagent, SubagentSnapshot } from "./types.js"
+import type { Subagent } from "./types.js"
 
 const DASH = "—"
 const GLYPH = "◆"
-
-/** The heading: how many subagents this session has in flight. */
-export function subagentsHead(running: Subagent[] | null, width: number, style: Style): string[] {
-  const muted = style.muted ?? ((s: string) => s)
-  return [
-    labelled("AGENTS", running && running.length
-      ? [{ text: String(running.length) }]
-      : [{ text: DASH, paint: muted }], width, style.bold),
-    "",
-  ]
-}
 
 /**
  * One row per running subagent.
@@ -39,12 +28,3 @@ export function subagentItems(running: Subagent[] | null, width: number, style: 
   })
 }
 
-/** Both parts stacked, for callers that do not scroll them separately. */
-export function subagentsBlock(
-  snapshot: SubagentSnapshot | null,
-  width: number,
-  style: Style,
-): string[] {
-  const running = snapshot?.running ?? null
-  return [...subagentsHead(running, width, style), ...subagentItems(running, width, style)]
-}
