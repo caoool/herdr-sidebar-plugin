@@ -4,7 +4,7 @@ import { join } from "node:path"
 import type { Section, SectionContext } from "../types.js"
 import type { ProviderKind } from "../../types.js"
 import type { McpServer, McpSnapshot, ToolCall } from "./types.js"
-import { toolsBlock } from "./format.js"
+import { mcpRows, toolsRows } from "./format.js"
 import { countCalls, transcriptFor } from "./sources/calls.js"
 import { parseClaudeMcp } from "./sources/claude.js"
 import { parseCodexMcp } from "./sources/codex.js"
@@ -154,7 +154,12 @@ export function toolsSection(): Section {
 
     render(width, style) {
       if (!subject) return []
-      return toolsBlock(calls, mcp, subject.agent, width, style)
+      return [...toolsRows(calls, width, style), "", ...mcpRows(mcp, width, style)]
+    },
+
+    regions(width, style) {
+      if (!subject) return []
+      return [toolsRows(calls, width, style), mcpRows(mcp, width, style)]
     },
   }
 }

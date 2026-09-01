@@ -46,41 +46,60 @@ function nameRow(
   return labelled(truncate(name, maxLabel), segments, width, paintLabel)
 }
 
-export function toolsBlock(
-  calls: ToolCall[],
-  mcp: McpSnapshot | null,
-  agent: ProviderKind,
-  width: number,
-  style: Style,
-): string[] {
+/**
+ * The TOOLS block: a heading carrying the session's total, then one row per tool.
+ *
+ * Split from the MCP block because the two scroll independently — a session that has called forty
+ * distinct tools must not bury the server list, and a reader scrolling one should not move the
+ * other.
+ */
+export function toolsRows(calls: ToolCall[], width: number, style: Style): string[] {
   const muted = style.muted ?? ((s: string) => s)
   const label = style.label ?? ((s: string) => s)
-  const out: string[] = []
-
   const total = calls.reduce((n, c) => n + c.count, 0)
-  out.push(labelled("TOOLS", total
-    ? [{ text: `${total} calls` }]
-    : [{ text: DASH, paint: muted }], width, style.bold))
-  out.push("")
+  const out = [
+    labelled("TOOLS", total ? [{ text: `${total} calls` }] : [{ text: DASH, paint: muted }],
+      width, style.bold),
+    "",
+  ]
   for (const call of calls) {
     out.push(nameRow(call.name, [{ text: String(call.count) }], width, label))
   }
+  return out
+}
 
-  out.push("")
+/** The MCP block: a heading carrying healthy-over-total, then one row per server. */
+export function mcpRows(mcp: McpSnapshot | null, width: number, style: Style): string[] {
+  const muted = style.muted ?? ((s: string) => s)
+  const label = style.label ?? ((s: string) => s)
   const servers = mcp?.servers ?? null
   const healthy = servers?.filter((s) => HEALTHY.includes(s.status)).length ?? 0
-  out.push(labelled("MCP", servers && servers.length
-    ? [{ text: `${healthy}/${servers.length}` }]
-    : [{ text: DASH, paint: muted }], width, style.bold))
-  out.push("")
+  const out = [
+    labelled("MCP", servers && servers.length
+      ? [{ text: `${healthy}/${servers.length}` }]
+      : [{ text: DASH, paint: muted }], width, style.bold),
+    "",
+  ]
   for (const server of servers ?? []) {
-    const segment = server.status === "unverified"
+    // `unverified` earns no glyph on purpose: the line parsed but its status word did not, and a
+    // glyph would assert a state nothing checked.
+    const segment: Segment = server.status === "unverified"
       ? { text: DASH, paint: muted }
       : { text: GLYPH[server.status], paint: style.mark
           ? (s: string) => style.mark!(s, HEALTHY.includes(server.status))
           : undefined }
     out.push(nameRow(server.name, [segment], width, label))
   }
-
   return out
+}
+
+/** Both blocks stacked, for callers that do not scroll them separately. */
+export function toolsBlock(
+  calls: ToolCall[],
+  mcp: McpSnapshot | null,
+  _agent: ProviderKind,
+  width: number,
+  style: Style,
+): string[] {
+  return [...toolsRows(calls, width, style), "", ...mcpRows(mcp, width, style)]
 }

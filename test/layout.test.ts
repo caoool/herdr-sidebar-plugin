@@ -1,73 +1,96 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { compose, MIN_SCROLL } from "../src/layout.js"
+import { allocate, compose, MIN_REGION } from "../src/layout.js"
 import { PLAIN } from "../src/ansi.js"
+import { displayWidth } from "../src/width.js"
 
 const rows = (p: string, n: number): string[] => Array.from({ length: n }, (_, i) => `${p}${i}`)
+const strip = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "")
+const region = (p: string, n: number) => ({ lines: rows(p, n) })
 
-test("with room for everything there is no divider and no scrolling", () => {
-  const { lines } = compose(rows("p", 3), rows("s", 4), 40, 20, 0, PLAIN)
-  assert.deepEqual(lines, ["p0", "p1", "p2", "s0", "s1", "s2", "s3"])
+test("allocate gives every region its floor before anyone gets seconds", () => {
+  // The whole point: a 40-tool list must not take rows the server list has not been offered.
+  const got = allocate([40, 13], 20)
+  assert.ok(got[1] >= MIN_REGION, `MCP got ${got[1]} rows`)
+  assert.equal(got[0] + got[1], 20)
 })
 
-test("an overflowing list gets a divider carrying both directions", () => {
-  const { lines } = compose(rows("p", 2), rows("s", 30), 12, 20, 3, PLAIN)
-  const divider = lines[2]
-  assert.match(divider, /↑3/)
-  assert.match(divider, /↓/)
-  assert.equal(divider.length, 20, "the divider spans the content width")
+test("allocate never hands out more than it has", () => {
+  for (const available of [0, 1, 5, 9, 50]) {
+    const got = allocate([40, 13], available)
+    assert.ok(got.reduce((a, b) => a + b, 0) <= available)
+  }
 })
 
-test("the divider omits a direction with nothing in it", () => {
-  const { lines } = compose(rows("p", 2), rows("s", 30), 12, 20, 0, PLAIN)
-  assert.doesNotMatch(lines[2], /↑/, "nothing above at the top")
-  assert.match(lines[2], /↓/)
+test("allocate does not waste rows on a region wanting less than the floor", () => {
+  const got = allocate([2, 40], 20)
+  assert.equal(got[0], 2, "a two-row region takes two rows, not the floor")
+  assert.equal(got[1], 18)
+})
+
+test("allocate splits the surplus evenly rather than first-come", () => {
+  const got = allocate([100, 100], 20)
+  assert.deepEqual(got, [10, 10])
+})
+
+test("with room for everything there are no dividers and no scrolling", () => {
+  const { lines, offsets } = compose(rows("p", 3), [region("t", 4), region("m", 3)], 40, 20, [0, 0], 0, PLAIN)
+  assert.deepEqual(lines, [...rows("p", 3), ...rows("t", 4), ...rows("m", 3)])
+  assert.deepEqual(offsets, [0, 0])
 })
 
 test("the composed block never exceeds the height it was given", () => {
-  for (const height of [8, 12, 20, 40]) {
-    const { lines } = compose(rows("p", 5), rows("s", 50), height, 20, 0, PLAIN)
+  for (const height of [6, 10, 20, 40]) {
+    const { lines } = compose(rows("p", 5), [region("t", 50), region("m", 13)], height, 20, [0, 0], 0, PLAIN)
     assert.ok(lines.length <= height, `height ${height} produced ${lines.length} rows`)
   }
 })
 
-test("a short terminal sacrifices pinned rows rather than the list", () => {
-  // The list is the thing being scrolled; leaving it one row tall would defeat the section.
-  const { lines } = compose(rows("p", 20), rows("s", 30), 10, 20, 0, PLAIN)
-  const scrollRows = lines.filter((l) => l.startsWith("s"))
-  assert.ok(scrollRows.length >= MIN_SCROLL, `only ${scrollRows.length} scroll rows`)
+test("both regions stay on screen no matter how long the first one is", () => {
+  const { lines } = compose(rows("p", 4), [region("t", 200), region("m", 13)], 24, 20, [0, 0], 0, PLAIN)
+  assert.ok(lines.some((l) => strip(l).startsWith("t")), "TOOLS is present")
+  assert.ok(lines.some((l) => strip(l).startsWith("m")), "MCP is present")
 })
 
-test("pinned rows are dropped from the bottom, keeping the top of the sidebar", () => {
-  const { lines } = compose(rows("p", 20), rows("s", 30), 10, 20, 0, PLAIN)
-  assert.equal(lines[0], "p0", "the first pinned row survives")
-  assert.ok(!lines.includes("p19"), "the last pinned row is the first to go")
+test("a clipped region declares what it is hiding", () => {
+  const { lines } = compose(rows("p", 2), [region("t", 60), region("m", 13)], 20, 20, [0, 0], 0, PLAIN)
+  const dividers = lines.filter((l) => strip(l).includes("↓") || strip(l).includes("↑"))
+  assert.ok(dividers.length >= 1, "at least one region shows an overflow marker")
+  for (const d of dividers) assert.equal(displayWidth(strip(d)), 20, "the divider spans the width")
 })
 
-test("the clamped offset is returned so the caller can store it back", () => {
-  const { offset } = compose(rows("p", 2), rows("s", 30), 12, 20, 999, PLAIN)
-  assert.ok(offset < 999)
+test("each region scrolls on its own offset", () => {
+  const a = compose(rows("p", 2), [region("t", 60), region("m", 60)], 24, 20, [0, 0], 0, PLAIN)
+  const b = compose(rows("p", 2), [region("t", 60), region("m", 60)], 24, 20, [5, 0], 0, PLAIN)
+  const firstOfA = a.lines.find((l) => strip(l).startsWith("t"))
+  const firstOfB = b.lines.find((l) => strip(l).startsWith("t"))
+  assert.notEqual(firstOfA, firstOfB, "scrolling region 0 moved region 0")
+  const mcpA = a.lines.filter((l) => strip(l).startsWith("m"))
+  const mcpB = b.lines.filter((l) => strip(l).startsWith("m"))
+  assert.deepEqual(mcpA, mcpB, "scrolling region 0 left region 1 untouched")
 })
 
-test("the divider never exceeds width even with long markers", () => {
-  const strip = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "")
-  const { lines } = compose(rows("p", 0), rows("s", 100), 10, 10, 999, PLAIN)
-  const divider = lines.find((l) => l.includes("↑") || l.includes("↓") || l.includes("─"))
-  assert.ok(divider, "divider should exist")
-  const strippedDivider = strip(divider)
-  assert.equal(strippedDivider.length, 10, `divider width should be exactly 10, got ${strippedDivider.length}`)
+test("an out-of-range offset clamps and is returned for the caller to store", () => {
+  const { offsets } = compose(rows("p", 2), [region("t", 60), region("m", 13)], 24, 20, [999, 0], 0, PLAIN)
+  assert.ok(offsets[0] < 999)
 })
 
-test("height=0 produces no rows", () => {
-  const { lines } = compose(rows("p", 5), rows("s", 30), 0, 20, 0, PLAIN)
-  assert.equal(lines.length, 0, `height 0 should produce 0 rows, got ${lines.length}`)
+test("the focused region's marker is distinguishable from the unfocused one", () => {
+  const style = { bold: (s: string) => `\x1b[1m${s}\x1b[0m`, paint: (t: string) => t,
+                  muted: (s: string) => `\x1b[2m${s}\x1b[0m` }
+  const first = compose(rows("p", 2), [region("t", 60), region("m", 60)], 24, 20, [0, 0], 0, style)
+  const second = compose(rows("p", 2), [region("t", 60), region("m", 60)], 24, 20, [0, 0], 1, style)
+  assert.notDeepEqual(first.lines, second.lines, "moving focus changes which marker is bright")
 })
 
-test("styling the divider does not change its width", () => {
-  const strip = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "")
-  const plain = compose(rows("p", 2), rows("s", 30), 12, 20, 3, PLAIN).lines[2]
-  const styled = compose(rows("p", 2), rows("s", 30), 12, 20, 3, {
-    bold: (s) => s, paint: (t) => t, muted: (s) => `\x1b[2m${s}\x1b[0m`,
-  }).lines[2]
-  assert.equal(strip(styled), plain)
+test("a short pane sacrifices pinned rows rather than the regions", () => {
+  const { lines } = compose(rows("p", 20), [region("t", 30), region("m", 30)], 12, 20, [0, 0], 0, PLAIN)
+  assert.ok(lines.some((l) => strip(l).startsWith("t")))
+  assert.ok(lines.some((l) => strip(l).startsWith("m")))
+  assert.equal(strip(lines[0]), "p0", "the top of the pinned block survives")
+})
+
+test("no regions at all still renders the pinned block", () => {
+  const { lines } = compose(rows("p", 3), [], 40, 20, [], 0, PLAIN)
+  assert.deepEqual(lines, rows("p", 3))
 })

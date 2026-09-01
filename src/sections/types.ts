@@ -35,6 +35,13 @@ export type Section = {
 
   /** Render at the given content width. Returns lines without the pane's left indent. */
   render(width: number, style: Style): string[]
+
+  /**
+   * Independently scrollable regions, for a section whose parts must not push each other off the
+   * screen. Each entry scrolls on its own offset and carries its own overflow marker. A section
+   * that defines this is laid out from it instead of from `render`.
+   */
+  regions?(width: number, style: Style): string[][]
 }
 
 export type SectionContext = {

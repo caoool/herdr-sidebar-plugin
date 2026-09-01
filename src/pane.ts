@@ -25,13 +25,15 @@ import { sessionSection } from "./sections/session/index.js"
 import { toolsSection } from "./sections/tools/index.js"
 import type { Section } from "./sections/types.js"
 import type { PaneAgent } from "./types.js"
-import { compose } from "./layout.js"
+import { compose, type Region } from "./layout.js"
 
 const SECTIONS: Section[] = [quotaSection(), sessionSection(), toolsSection()]
 
 let subject: PaneAgent | null = null
 let dirty = true
-let offset = 0
+/** One scroll position per region, and which region the keys are driving. */
+let offsets: number[] = []
+let focus = 0
 /**
  * Reset the scroll when the pane changes agent — the list underneath is a different session's,
  * so an offset carried over from the last one points at nothing meaningful.
@@ -92,7 +94,8 @@ async function refresh() {
   subject = resolveSubject(agents, selfTabId(), subject)
   const key = subject ? `${subject.agent}:${subject.sessionId}` : null
   if (key !== scrolledFor) {
-    offset = 0
+    offsets = []
+    focus = 0
     scrolledFor = key
   }
   await Promise.all(SECTIONS.map((s) => s.refresh({ subject }).catch(() => {})))
@@ -106,20 +109,26 @@ function render() {
   const height = Math.max(1, (process.stdout.rows ?? 40) - 2)
 
   const pinned: string[] = []
-  const scroll: string[] = []
+  const regions: Region[] = []
   for (const section of SECTIONS) {
+    if (section.regions) {
+      for (const lines of section.regions(width, TERMINAL)) {
+        if (lines.length) regions.push({ lines })
+      }
+      continue
+    }
     const lines = section.render(width, TERMINAL)
     if (!lines.length) continue
-    const into = section.scrollable ? scroll : pinned
-    if (into.length) into.push("")
-    into.push(...lines)
+    if (pinned.length) pinned.push("")
+    pinned.push(...lines)
   }
-  if (pinned.length && scroll.length) pinned.push("")
+  if (pinned.length && regions.length) pinned.push("")
 
-  const composed = compose(pinned, scroll, height, width, offset, TERMINAL)
-  offset = composed.offset
+  const composed = compose(pinned, regions, height, width, offsets, focus, TERMINAL)
+  offsets = composed.offsets
+  if (focus >= regions.length) focus = 0
   const out = composed.lines
-  process.stdout.write("\x1b[2J\x1b[H\n" + out.map((l) => (l ? `  ${l}` : l)).join("\n") + "\n")
+  process.stdout.write("\x1b[2J\x1b[H\n" + out.map((l) => (l ? `  ${l}` : l)).join("\n"))
 }
 
 // Watch what the agents write rather than polling anything. Debounced because Codex appends
@@ -151,13 +160,33 @@ process.stdout.on("resize", () => { dirty = true; render() })
 function onKey(chunk: Buffer) {
   const key = chunk.toString("utf8")
   if (key === "\x03") return process.exit(0)
-  if (key === "\x1b[A" || key === "k") offset -= 1
-  else if (key === "\x1b[B" || key === "j") offset += 1
-  else if (key === "g") offset = 0
-  else if (key === "G") offset = Number.MAX_SAFE_INTEGER
+  const at = offsets[focus] ?? 0
+  if (key === "\t") focus += 1
+  else if (key === "\x1b[A" || key === "k") offsets[focus] = at - 1
+  else if (key === "\x1b[B" || key === "j") offsets[focus] = at + 1
+  else if (key === "g") offsets[focus] = 0
+  else if (key === "G") offsets[focus] = Number.MAX_SAFE_INTEGER
   else return
   dirty = true
   render()
+}
+
+/**
+ * Draw on the alternate screen.
+ *
+ * Rows that leave the alternate screen never enter herdr's host scrollback, so the pane itself
+ * cannot be scrolled — verified by writing a thousand rows to a test pane and reading back
+ * `max_offset_from_bottom: 0`, against 124 for the same content on the normal screen. That is
+ * what makes per-region scrolling meaningful: the sidebar as a whole stays put, and the only
+ * thing that moves is the list the keys are pointed at.
+ */
+if (process.stdout.isTTY) {
+  process.stdout.write("\x1b[?1049h")
+  // Leaving the alternate screen on would corrupt whatever herdr draws in this pane next.
+  const restore = () => { try { process.stdout.write("\x1b[?1049l") } catch { /* already gone */ } }
+  process.on("exit", restore)
+  process.on("SIGTERM", () => { restore(); process.exit(0) })
+  process.on("SIGHUP", () => { restore(); process.exit(0) })
 }
 
 if (process.stdin.isTTY) {
