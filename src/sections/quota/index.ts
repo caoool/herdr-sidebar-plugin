@@ -8,8 +8,24 @@ import type { QuotaSnapshot } from "./types.js"
 import { block } from "./format.js"
 import { sanitize } from "./freshness.js"
 import { readClaude, claudeDir } from "./sources/claude.js"
+import { readClaudeUsage } from "./sources/claude-usage.js"
 import { readCodex } from "./sources/codex.js"
 import { readGrok, GROK_LOG } from "./sources/grok.js"
+
+/**
+ * Claude's figures come from the account's own usage endpoint, falling back to whatever the
+ * statusLine collector has left behind.
+ *
+ * The endpoint is preferred because it does not depend on a status line existing. Claude renders
+ * the status line on its own row and puts the `/rc` badge there, so configuring one permanently
+ * changes the shape of the footer — this is what lets that be removed without the panel losing
+ * Claude's quota. The collector remains the fallback for anyone who has it and would rather not
+ * have the sidebar touch their credential.
+ */
+async function claudeQuota(): Promise<QuotaSnapshot | null> {
+  const live = await readClaudeUsage().catch(() => null)
+  return live ?? (await readClaude().catch(() => null))
+}
 
 const ORDER: ProviderKind[] = ["claude", "codex", "grok"]
 
@@ -59,7 +75,7 @@ export function quotaSection(): Section {
 
     async refresh(ctx) {
       const [claude, codex, grok] = await Promise.all([
-        readClaude().catch(() => null),
+        claudeQuota(),
         readCodex().catch(() => null),
         readGrok().catch(() => null),
       ])
