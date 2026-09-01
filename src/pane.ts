@@ -24,13 +24,14 @@ import { quotaSection } from "./sections/quota/index.js"
 import { sessionSection } from "./sections/session/index.js"
 import { todosSection } from "./sections/todos/index.js"
 import { shellsSection } from "./sections/shells/index.js"
+import { subagentsSection } from "./sections/subagents/index.js"
 import { toolsSection } from "./sections/tools/index.js"
 import type { Section } from "./sections/types.js"
 import type { PaneAgent } from "./types.js"
 import { compose, type Region, type Span } from "./layout.js"
 import { SAFE_CWD } from "./run.js"
 
-const SECTIONS: Section[] = [quotaSection(), sessionSection(), toolsSection(), todosSection(), shellsSection()]
+const SECTIONS: Section[] = [quotaSection(), sessionSection(), toolsSection(), todosSection(), shellsSection(), subagentsSection()]
 
 let subject: PaneAgent | null = null
 let dirty = true
