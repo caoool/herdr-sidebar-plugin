@@ -3,17 +3,22 @@
  * Startup hook. herdr runs this once after restoring a session, and again after a live
  * handoff — never on client attach.
  *
- * Two jobs, both idempotent, because the plugin must be usable the moment it is installed:
+ * Housekeeping only. It drops stale pane-id locks: plugin panes are not restored automatically,
+ * so the ids recorded before the restart no longer exist, and the next pane.agent_detected
+ * re-opens. It also trims the collector's leftovers.
  *
- *  1. Drop stale pane-id locks. Plugin panes are not restored automatically, so the ids
- *     recorded before the restart no longer exist; the next pane.agent_detected re-opens.
- *  2. Ensure the Claude statusLine collector is installed. It is the only channel that
- *     reports Claude quota — no hook payload carries rate_limits, and the cached copy in
- *     ~/.claude.json does not refresh with ordinary session activity.
+ * It deliberately does NOT install the Claude statusLine collector any more. That used to happen
+ * here, because the collector was the only channel reporting Claude quota — but quota now comes
+ * from the account's usage endpoint and the session block from the transcript, so the collector
+ * buys nothing that is not already available.
+ *
+ * Reinstalling it was actively wrong: a status line is not free. Claude draws it on its own row
+ * and puts the `/rc` badge there, so configuring one changes the shape of the footer. A user who
+ * removes their status line has made a choice, and every `herdr plugin install` was silently
+ * undoing it. The `connect-claude` action still installs the collector for anyone who wants it.
  */
 import { readdir, unlink, stat } from "node:fs/promises"
 import { join } from "node:path"
-import { ensureCollector } from "./install-collector.mjs"
 
 const state = process.env.HERDR_PLUGIN_STATE_DIR
 if (!state) process.exit(0)
@@ -32,8 +37,3 @@ for (const f of await readdir(claude).catch(() => [])) {
   const info = await stat(p).catch(() => null)
   if (info && Date.now() - info.mtimeMs > WEEK) await unlink(p).catch(() => {})
 }
-
-// Never let a settings problem stop the sidebar from coming up.
-await ensureCollector().catch((err) => {
-  console.error(`collector not installed: ${err?.message ?? err}`)
-})
