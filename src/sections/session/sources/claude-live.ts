@@ -4,6 +4,7 @@ import { promisify } from "node:util"
 import { join } from "node:path"
 import { homedir } from "node:os"
 import { herdrBin } from "../../../herdr.js"
+import { SAFE_CWD } from "../../../run.js"
 
 const run = promisify(execFile)
 
@@ -33,6 +34,7 @@ const FOOTER_MODES: Array<[RegExp, string]> = [
  */
 export async function permissionFromScreen(paneId: string): Promise<string | null> {
   const { stdout } = await run(herdrBin(), ["pane", "read", paneId, "--source", "visible", "--lines", "6"], {
+    cwd: SAFE_CWD,
     maxBuffer: 1 << 20,
   }).catch(() => ({ stdout: "" }))
   if (!stdout) return null

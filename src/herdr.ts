@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import type { PaneAgent, ProviderKind } from "./types.js"
+import { SAFE_CWD } from "./run.js"
 
 const run = promisify(execFile)
 
@@ -40,7 +41,7 @@ const asKind = (v: unknown): ProviderKind | null =>
  * self-focus trap, so we read agents[] rather than inspecting focus directly.
  */
 export async function listAgents(): Promise<PaneAgent[]> {
-  const { stdout } = await run(herdrBin(), ["api", "snapshot"], { maxBuffer: 8 << 20 })
+  const { stdout } = await run(herdrBin(), ["api", "snapshot"], { cwd: SAFE_CWD, maxBuffer: 8 << 20 })
   const snap = JSON.parse(stdout)?.result?.snapshot
   if (!snap?.agents) return []
   return (snap.agents as Record<string, any>[]).flatMap((a) => {

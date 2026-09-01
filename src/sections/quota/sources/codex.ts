@@ -6,6 +6,7 @@ import { tailLines } from "../../../tail.js"
 import { cached } from "../../../cache.js"
 import { isExpired } from "../freshness.js"
 import type { QuotaSnapshot, QuotaWindow } from "../types.js"
+import { SAFE_CWD } from "../../../run.js"
 
 export const CODEX_SESSIONS = join(homedir(), ".codex", "sessions")
 
@@ -108,7 +109,7 @@ function queryAppServer(): Promise<any | null> {
   return new Promise((resolve) => {
     let child: ReturnType<typeof spawn>
     try {
-      child = spawn("codex", ["app-server", "--stdio"], { stdio: ["pipe", "pipe", "ignore"] })
+      child = spawn("codex", ["app-server", "--stdio"], { cwd: SAFE_CWD, stdio: ["pipe", "pipe", "ignore"] })
     } catch { return resolve(null) }
 
     let buf = ""

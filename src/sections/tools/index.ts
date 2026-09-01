@@ -10,6 +10,7 @@ import { parseClaudeMcp } from "./sources/claude.js"
 import { parseCodexMcp } from "./sources/codex.js"
 import { parseGrokMcp } from "./sources/grok.js"
 import { claimLock, isFresh, mcpDir, readCached, writeCached } from "./cache.js"
+import { SAFE_CWD } from "../../run.js"
 
 /**
  * Run a command for its stdout, yielding null rather than throwing.
@@ -42,7 +43,7 @@ function run(cmd: string, args: string[], timeout: number): Promise<string | nul
   return new Promise((resolve) => {
     let child: ReturnType<typeof spawn>
     try {
-      child = spawn(cmd, args, { cwd: homedir(), stdio: ["ignore", "pipe", "ignore"] })
+      child = spawn(cmd, args, { cwd: SAFE_CWD, stdio: ["ignore", "pipe", "ignore"] })
     } catch {
       return resolve(null)
     }

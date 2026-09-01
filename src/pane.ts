@@ -27,6 +27,7 @@ import { toolsSection } from "./sections/tools/index.js"
 import type { Section } from "./sections/types.js"
 import type { PaneAgent } from "./types.js"
 import { compose, type Region, type Span } from "./layout.js"
+import { SAFE_CWD } from "./run.js"
 
 const SECTIONS: Section[] = [quotaSection(), sessionSection(), toolsSection(), todosSection()]
 
@@ -61,7 +62,7 @@ function dismiss() {
   const self = selfPaneId()
   // Ask herdr to close the pane rather than merely exiting: whether a pane disappears when
   // its command ends is herdr's configuration to decide, and this leaves nothing behind.
-  if (self) execFile(herdrBin(), ["plugin", "pane", "close", self], () => process.exit(0))
+  if (self) execFile(herdrBin(), ["plugin", "pane", "close", self], { cwd: SAFE_CWD }, () => process.exit(0))
   else process.exit(0)
 }
 
@@ -81,7 +82,7 @@ const LABEL = "sidebar"
  */
 function claimLabel() {
   const self = selfPaneId()
-  if (self) execFile(herdrBin(), ["pane", "rename", self, LABEL], () => {})
+  if (self) execFile(herdrBin(), ["pane", "rename", self, LABEL], { cwd: SAFE_CWD }, () => {})
 }
 
 async function refresh() {

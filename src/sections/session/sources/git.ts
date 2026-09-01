@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { basename } from "node:path"
+import { SAFE_CWD } from "../../../run.js"
 
 const run = promisify(execFile)
 
@@ -15,7 +16,7 @@ export type GitInfo = {
 }
 
 const git = async (cwd: string, args: string[]): Promise<string | null> => {
-  const { stdout } = await run("git", ["-C", cwd, ...args], { timeout: 5_000 }).catch(() => ({ stdout: "" }))
+  const { stdout } = await run("git", ["-C", cwd, ...args], { cwd: SAFE_CWD, timeout: 5_000 }).catch(() => ({ stdout: "" }))
   const out = stdout.trim()
   return out === "" ? null : out
 }
