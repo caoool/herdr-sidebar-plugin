@@ -53,6 +53,50 @@ function nameRow(
  * distinct tools must not bury the server list, and a reader scrolling one should not move the
  * other.
  */
+export function toolsHead(calls: ToolCall[], width: number, style: Style): string[] {
+  const muted = style.muted ?? ((s: string) => s)
+  const total = calls.reduce((n, c) => n + c.count, 0)
+  return [
+    labelled("TOOLS", total ? [{ text: `${total} calls` }] : [{ text: DASH, paint: muted }],
+      width, style.bold),
+    "",
+  ]
+}
+
+/** One row per tool, most recently used first. The heading is `toolsHead`. */
+export function toolItems(calls: ToolCall[], width: number, style: Style): string[] {
+  const label = style.label ?? ((s: string) => s)
+  return calls.map((call) => nameRow(call.name, [{ text: String(call.count) }], width, label))
+}
+
+export function mcpHead(mcp: McpSnapshot | null, width: number, style: Style): string[] {
+  const muted = style.muted ?? ((s: string) => s)
+  const servers = mcp?.servers ?? null
+  const healthy = servers?.filter((s) => HEALTHY.includes(s.status)).length ?? 0
+  return [
+    labelled("MCP", servers && servers.length
+      ? [{ text: `${healthy}/${servers.length}` }]
+      : [{ text: DASH, paint: muted }], width, style.bold),
+    "",
+  ]
+}
+
+/** One row per server, in the order the agent reports them. The heading is `mcpHead`. */
+export function mcpItems(mcp: McpSnapshot | null, width: number, style: Style): string[] {
+  const muted = style.muted ?? ((s: string) => s)
+  const label = style.label ?? ((s: string) => s)
+  return (mcp?.servers ?? []).map((server) => {
+    // `unverified` earns no glyph on purpose: the line parsed but its status word did not, and a
+    // glyph would assert a state nothing checked.
+    const segment: Segment = server.status === "unverified"
+      ? { text: DASH, paint: muted }
+      : { text: GLYPH[server.status], paint: style.mark
+          ? (s: string) => style.mark!(s, HEALTHY.includes(server.status))
+          : undefined }
+    return nameRow(server.name, [segment], width, label)
+  })
+}
+
 export function toolsRows(calls: ToolCall[], width: number, style: Style): string[] {
   const muted = style.muted ?? ((s: string) => s)
   const label = style.label ?? ((s: string) => s)

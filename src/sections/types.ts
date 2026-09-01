@@ -1,5 +1,6 @@
 import type { PaneAgent } from "../types.js"
 import type { Style } from "../ansi.js"
+import type { Region } from "../layout.js"
 
 /**
  * A sidebar section.
@@ -41,7 +42,7 @@ export type Section = {
    * screen. Each entry scrolls on its own offset and carries its own overflow marker. A section
    * that defines this is laid out from it instead of from `render`.
    */
-  regions?(width: number, style: Style): string[][]
+  regions?(width: number, style: Style): Region[]
 }
 
 export type SectionContext = {

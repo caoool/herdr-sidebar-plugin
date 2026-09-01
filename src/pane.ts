@@ -112,8 +112,8 @@ function render() {
   const regions: Region[] = []
   for (const section of SECTIONS) {
     if (section.regions) {
-      for (const lines of section.regions(width, TERMINAL)) {
-        if (lines.length) regions.push({ lines })
+      for (const region of section.regions(width, TERMINAL)) {
+        if (region.head.length || region.body.length) regions.push(region)
       }
       continue
     }

@@ -4,7 +4,7 @@ import { join } from "node:path"
 import type { Section, SectionContext } from "../types.js"
 import type { ProviderKind } from "../../types.js"
 import type { McpServer, McpSnapshot, ToolCall } from "./types.js"
-import { mcpRows, toolsRows } from "./format.js"
+import { mcpHead, mcpItems, mcpRows, toolItems, toolsHead, toolsRows } from "./format.js"
 import { countCalls, transcriptFor } from "./sources/calls.js"
 import { parseClaudeMcp } from "./sources/claude.js"
 import { parseCodexMcp } from "./sources/codex.js"
@@ -103,6 +103,9 @@ async function check(agent: ProviderKind): Promise<McpServer[] | null> {
  * shown. The section is scrollable because the lists are unbounded — thirteen servers and two
  * dozen tools is ordinary — while quota and context above it must stay in view.
  */
+/** Items shown per region before the rest becomes scrollable. */
+const VISIBLE = 5
+
 export function toolsSection(): Section {
   let calls: ToolCall[] = []
   let mcp: McpSnapshot | null = null
@@ -159,10 +162,13 @@ export function toolsSection(): Section {
 
     regions(width, style) {
       if (!subject) return []
-      // The MCP region opens with a blank row so the two blocks read as separate at a glance,
-      // the same separation the pinned sections get. It belongs to the region rather than sitting
-      // between them, so it scrolls away with the block it introduces instead of stranding a gap.
-      return [toolsRows(calls, width, style), ["", ...mcpRows(mcp, width, style)]]
+      // Five items each, the rest reachable by scrolling. The heading rides in `head` so it
+      // stays put while its list moves; MCP's leading blank separates the two blocks and belongs
+      // to the region rather than sitting between them.
+      return [
+        { head: toolsHead(calls, width, style), body: toolItems(calls, width, style), maxBody: VISIBLE },
+        { head: ["", ...mcpHead(mcp, width, style)], body: mcpItems(mcp, width, style), maxBody: VISIBLE },
+      ]
     },
   }
 }

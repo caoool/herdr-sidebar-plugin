@@ -52,7 +52,22 @@ export function allocate(needs: number[], available: number, min: number = MIN_R
   return out
 }
 
-export type Region = { lines: string[] }
+/**
+ * One independently scrollable region.
+ *
+ * `head` never scrolls — a heading that slid away with its list would leave rows of numbers with
+ * nothing saying what they count. `body` is the list itself, and `maxBody` caps how much of it is
+ * shown at once even when the pane has room to spare, so the sidebar stays compact and both
+ * regions keep a predictable size.
+ */
+export type Region = { head: string[]; body: string[]; maxBody?: number }
+
+/** Rows a region wants: its head, the capped part of its body, and a divider if that clips. */
+function desired(region: Region): number {
+  const cap = region.maxBody ?? region.body.length
+  const shown = Math.min(region.body.length, cap)
+  return region.head.length + shown + (region.body.length > shown ? 1 : 0)
+}
 
 /**
  * Lay the pane out: a pinned block that never moves, then one independently scrollable region per
@@ -78,30 +93,38 @@ export function compose(
 
   if (!regions.length) return { lines: pinned.slice(0, height), offsets: [] }
 
-  const totalRegion = regions.reduce((n, r) => n + r.lines.length, 0)
-  if (pinned.length + totalRegion <= height) {
-    // Everything fits: no dividers, no scrolling, nothing to explain.
-    return { lines: [...pinned, ...regions.flatMap((r) => r.lines)], offsets: regions.map(() => 0) }
-  }
+  const wants = regions.map(desired)
+  const total = wants.reduce((a, b) => a + b, 0)
 
   // The pinned block yields before the regions do — quota and context are re-read constantly,
   // while the lists are what the reader came to scroll.
   const floor = regions.length * MIN_REGION
-  const head = pinned.length + floor <= height ? pinned : pinned.slice(0, Math.max(0, height - floor))
+  const head =
+    pinned.length + Math.min(total, floor) <= height
+      ? pinned
+      : pinned.slice(0, Math.max(0, height - floor))
 
-  const caps = allocate(regions.map((r) => r.lines.length), height - head.length)
+  const caps = allocate(wants, height - head.length)
 
   const lines: string[] = [...head]
   const settled: number[] = []
   regions.forEach((region, i) => {
     const cap = caps[i]
     if (cap <= 0) { settled.push(0); return }
-    const clipped = region.lines.length > cap
-    // A clipped region spends its last row on the divider that says so.
-    const w = window(region.lines, clipped ? cap - 1 : cap, offsets[i] ?? 0)
+
+    const headRows = region.head.slice(0, cap)
+    lines.push(...headRows)
+    let room = cap - headRows.length
+    if (region.maxBody !== undefined) room = Math.min(room, region.maxBody + 1)
+    if (room <= 0) { settled.push(0); return }
+
+    const clipped = region.body.length > Math.min(room, region.maxBody ?? room)
+    const shown = clipped ? Math.min(room - 1, region.maxBody ?? room - 1) : region.body.length
+    const w = window(region.body, Math.max(0, shown), offsets[i] ?? 0)
     settled.push(w.offset)
     lines.push(...w.lines)
     if (!clipped) return
+
     const tag = marker(w.above, w.below)
     const rule = "─".repeat(Math.max(0, width - (tag ? displayWidth(tag) + 2 : 0)))
     // The focused region's marker is bright so you can see which one the keys are driving.

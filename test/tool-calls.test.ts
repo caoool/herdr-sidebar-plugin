@@ -105,3 +105,25 @@ test("countCalls only advances the cursor past complete lines", async (t) => {
     },
   )
 })
+
+test("tools are ordered by most recent use, not by how often they were used", () => {
+  // The sidebar shows the first few rows only, and those rows should answer "what is this
+  // session doing now". Sorted by frequency, Bash sits at the top of a long session forever.
+  const line = (name: string) =>
+    JSON.stringify({ message: { content: [{ type: "tool_use", name }] } })
+  const out = tally("claude", [
+    line("Bash"), line("Bash"), line("Bash"),
+    line("Read"),
+    line("Edit"),
+  ])
+  assert.deepEqual(out.map((t) => t.name), ["Edit", "Read", "Bash"])
+  assert.equal(out.find((t) => t.name === "Bash")?.count, 3, "counts still accumulate")
+})
+
+test("a tool called again moves back to the front", () => {
+  const line = (name: string) =>
+    JSON.stringify({ message: { content: [{ type: "tool_use", name }] } })
+  const out = tally("claude", [line("Bash"), line("Read"), line("Bash")])
+  assert.equal(out[0].name, "Bash")
+  assert.equal(out[0].count, 2)
+})

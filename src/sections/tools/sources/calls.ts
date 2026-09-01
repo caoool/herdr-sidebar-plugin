@@ -39,21 +39,42 @@ export function namesIn(agent: ProviderKind, line: string): string[] {
   return name ? [String(name)] : []
 }
 
-/** Counts, highest first; ties alphabetical so the rows do not reshuffle between refreshes. */
-const sorted = (counts: Map<string, number>): ToolCall[] =>
-  [...counts]
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+/** What is known about one tool: how often it has been called, and when it last was. */
+type Seen = { count: number; last: number }
+
+/**
+ * Most recently used first.
+ *
+ * Recency rather than frequency, because the sidebar shows only the first few rows and those
+ * rows should answer "what is this session doing now". Sorted by frequency, the top of the list
+ * is whatever the session has done most since it started — usually Bash — and it never changes.
+ * Ties fall back to count and then to name, so the order is total and cannot reshuffle between
+ * refreshes on equal input.
+ */
+const sorted = (seen: Map<string, Seen>): ToolCall[] =>
+  [...seen]
+    .map(([name, s]) => ({ name, count: s.count, last: s.last }))
+    .sort((a, b) => b.last - a.last || b.count - a.count || a.name.localeCompare(b.name))
+    .map(({ name, count }) => ({ name, count }))
+
+/** Record one call against a tool, remembering its position in the session's order. */
+function note(seen: Map<string, Seen>, name: string, at: number): void {
+  const prior = seen.get(name)
+  if (prior) {
+    prior.count += 1
+    prior.last = at
+    return
+  }
+  seen.set(name, { count: 1, last: at })
+}
 
 export function tally(agent: ProviderKind, lines: string[]): ToolCall[] {
-  const counts = new Map<string, number>()
+  const seen = new Map<string, Seen>()
+  let at = 0
   for (const line of lines) {
-    for (const raw of namesIn(agent, line)) {
-      const name = shortenTool(raw)
-      counts.set(name, (counts.get(name) ?? 0) + 1)
-    }
+    for (const raw of namesIn(agent, line)) note(seen, shortenTool(raw), at++)
   }
-  return sorted(counts)
+  return sorted(seen)
 }
 
 /**
@@ -90,7 +111,7 @@ export async function transcriptFor(
  * append-only, so the first read streams it whole and every later read consumes only the bytes
  * that appeared since, keeping the steady-state cost proportional to what the agent just did.
  */
-const cursors = new Map<string, { size: number; counts: Map<string, number> }>()
+const cursors = new Map<string, { size: number; seen: Map<string, Seen>; at: number }>()
 
 export async function countCalls(agent: ProviderKind, path: string): Promise<ToolCall[]> {
   const info = await stat(path).catch(() => null)
@@ -99,10 +120,10 @@ export async function countCalls(agent: ProviderKind, path: string): Promise<Too
   let cursor = cursors.get(path)
   // A file that shrank was rotated or replaced; start over rather than trust the old offset.
   if (!cursor || info.size < cursor.size) {
-    cursor = { size: 0, counts: new Map() }
+    cursor = { size: 0, seen: new Map(), at: 0 }
     cursors.set(path, cursor)
   }
-  if (info.size === cursor.size) return sorted(cursor.counts)
+  if (info.size === cursor.size) return sorted(cursor.seen)
 
   // The cursor may only advance past bytes that formed a complete line. A refresh can land
   // mid-write (the writer's file ends without a trailing newline yet); the fragment that
@@ -127,8 +148,7 @@ export async function countCalls(agent: ProviderKind, path: string): Promise<Too
       while ((idx = buf.indexOf(NEWLINE, start)) !== -1) {
         const line = buf.subarray(start, idx).toString("utf8")
         for (const raw of namesIn(agent, line)) {
-          const name = shortenTool(raw)
-          cursor.counts.set(name, (cursor.counts.get(name) ?? 0) + 1)
+        note(cursor.seen, shortenTool(raw), cursor.at++)
         }
         start = idx + 1
       }
@@ -137,5 +157,5 @@ export async function countCalls(agent: ProviderKind, path: string): Promise<Too
   } catch { /* whatever was consumed above is still credited below; the rest waits for the next refresh */ }
 
   cursor.size += bytesRead - leftover.length
-  return sorted(cursor.counts)
+  return sorted(cursor.seen)
 }

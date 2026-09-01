@@ -6,7 +6,8 @@ import { displayWidth } from "../src/width.js"
 
 const rows = (p: string, n: number): string[] => Array.from({ length: n }, (_, i) => `${p}${i}`)
 const strip = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "")
-const region = (p: string, n: number) => ({ lines: rows(p, n) })
+const region = (p: string, n: number, maxBody?: number) =>
+  ({ head: [`${p}-head`, ""], body: rows(p, n), maxBody })
 
 test("allocate gives every region its floor before anyone gets seconds", () => {
   // The whole point: a 40-tool list must not take rows the server list has not been offered.
@@ -35,7 +36,7 @@ test("allocate splits the surplus evenly rather than first-come", () => {
 
 test("with room for everything there are no dividers and no scrolling", () => {
   const { lines, offsets } = compose(rows("p", 3), [region("t", 4), region("m", 3)], 40, 20, [0, 0], 0, PLAIN)
-  assert.deepEqual(lines, [...rows("p", 3), ...rows("t", 4), ...rows("m", 3)])
+  assert.deepEqual(lines, [...rows("p", 3), "t-head", "", ...rows("t", 4), "m-head", "", ...rows("m", 3)])
   assert.deepEqual(offsets, [0, 0])
 })
 
@@ -62,11 +63,12 @@ test("a clipped region declares what it is hiding", () => {
 test("each region scrolls on its own offset", () => {
   const a = compose(rows("p", 2), [region("t", 60), region("m", 60)], 24, 20, [0, 0], 0, PLAIN)
   const b = compose(rows("p", 2), [region("t", 60), region("m", 60)], 24, 20, [5, 0], 0, PLAIN)
-  const firstOfA = a.lines.find((l) => strip(l).startsWith("t"))
-  const firstOfB = b.lines.find((l) => strip(l).startsWith("t"))
-  assert.notEqual(firstOfA, firstOfB, "scrolling region 0 moved region 0")
-  const mcpA = a.lines.filter((l) => strip(l).startsWith("m"))
-  const mcpB = b.lines.filter((l) => strip(l).startsWith("m"))
+  // Body rows only — the heading is pinned inside its region and must not move either way.
+  const bodyA = a.lines.filter((l) => /^t\d+$/.test(strip(l)))
+  const bodyB = b.lines.filter((l) => /^t\d+$/.test(strip(l)))
+  assert.notDeepEqual(bodyA, bodyB, "scrolling region 0 moved region 0")
+  const mcpA = a.lines.filter((l) => /^m\d+$/.test(strip(l)))
+  const mcpB = b.lines.filter((l) => /^m\d+$/.test(strip(l)))
   assert.deepEqual(mcpA, mcpB, "scrolling region 0 left region 1 untouched")
 })
 
@@ -93,4 +95,36 @@ test("a short pane sacrifices pinned rows rather than the regions", () => {
 test("no regions at all still renders the pinned block", () => {
   const { lines } = compose(rows("p", 3), [], 40, 20, [], 0, PLAIN)
   assert.deepEqual(lines, rows("p", 3))
+})
+
+test("a capped region shows only its cap, however much room the pane has", () => {
+  // Five items each is the point: the sidebar stays compact even on a tall terminal.
+  const { lines } = compose([], [region("t", 40, 5)], 200, 20, [0], 0, PLAIN)
+  const items = lines.filter((l) => /^t\d+$/.test(strip(l)))
+  assert.equal(items.length, 5)
+})
+
+test("a region's head stays put while its body scrolls", () => {
+  const top = compose([], [region("t", 40, 5)], 200, 20, [0], 0, PLAIN)
+  const down = compose([], [region("t", 40, 5)], 200, 20, [6], 0, PLAIN)
+  assert.equal(strip(top.lines[0]), "t-head")
+  assert.equal(strip(down.lines[0]), "t-head", "the heading does not scroll away")
+  assert.notEqual(strip(top.lines[2]), strip(down.lines[2]), "the body did move")
+})
+
+test("a capped region still declares the rest is there", () => {
+  const { lines } = compose([], [region("t", 40, 5)], 200, 20, [0], 0, PLAIN)
+  assert.ok(lines.some((l) => strip(l).includes("↓")), "an overflow marker is shown")
+})
+
+test("a body inside the cap needs no marker", () => {
+  const { lines } = compose([], [region("t", 3, 5)], 200, 20, [0], 0, PLAIN)
+  assert.ok(!lines.some((l) => strip(l).includes("↓") || strip(l).includes("↑")))
+})
+
+test("both capped regions fit together on a tall pane", () => {
+  const { lines } = compose(rows("p", 5), [region("t", 40, 5), region("m", 13, 5)], 76, 20, [0, 0], 0, PLAIN)
+  assert.equal(lines.filter((l) => /^t\d+$/.test(strip(l))).length, 5)
+  assert.equal(lines.filter((l) => /^m\d+$/.test(strip(l))).length, 5)
+  assert.ok(lines.length <= 76)
 })
