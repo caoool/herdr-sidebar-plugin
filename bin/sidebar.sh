@@ -56,16 +56,21 @@ close_pane() {
   rm -f "$LOCK"
 }
 
-# Startup hooks do not run on install — only when a server starts — so the collector would
-# not exist until the next herdr restart. Detection fires within seconds of an agent
-# appearing, so this is where "works as soon as it is installed" actually happens.
-# Idempotent and backgrounded; it returns "unchanged" once it is in place.
-ensure_collector() {
-  ( node "$HERDR_PLUGIN_ROOT/bin/install-collector.mjs" >/dev/null 2>&1 || true ) &
-}
+# The collector is NOT installed here any more.
+#
+# This runs on pane.agent_detected — every time an agent session starts — and it wrote a
+# statusLine into the user's settings each time. That made the plugin work the moment it was
+# installed, back when the collector was the only channel reporting Claude quota. It no longer
+# is: quota comes from the account's usage endpoint and the session block from the transcript.
+#
+# It also made the setting impossible to remove. A status line is not free — Claude draws it on
+# its own row and puts the /rc badge there — so removing one is a deliberate choice, and this
+# undid that choice on the very next session start. The symptom was maddening: the file would be
+# clean, a new session would be opened, and the row would be back before it finished starting.
+# The `connect-claude` action installs the collector for anyone who wants it.
 
 case "$MODE" in
-  auto-open) ensure_collector; open_pane ;;
+  auto-open) open_pane ;;
   open)      open_pane ;;
   close)     close_pane ;;
   toggle)    if live; then close_pane; else open_pane; fi ;;
