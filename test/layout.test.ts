@@ -128,3 +128,26 @@ test("both capped regions fit together on a tall pane", () => {
   assert.equal(lines.filter((l) => /^m\d+$/.test(strip(l))).length, 5)
   assert.ok(lines.length <= 76)
 })
+
+test("spans locate each region in the composed output", () => {
+  // The pane maps a wheel event's row back to a region through these, so a pointer over the
+  // server list moves the server list and nothing else.
+  const { lines, spans } = compose(rows("p", 3), [region("t", 40, 5), region("m", 13, 5)], 76, 20, [0, 0], 0, PLAIN)
+  assert.equal(spans.length, 2)
+  for (const s of spans) {
+    assert.ok(s.start >= 0 && s.end >= s.start, `bad span ${JSON.stringify(s)}`)
+    assert.ok(s.end < lines.length, "a span cannot point past the output")
+  }
+  assert.ok(spans[0].end < spans[1].start, "regions do not overlap")
+  // Every row the first span covers really belongs to the first region.
+  for (let i = spans[0].start; i <= spans[0].end; i++) {
+    const line = strip(lines[i])
+    assert.ok(line === "" || line.startsWith("t") || line.includes("↓") || line.includes("↑"),
+      `row ${i} is not part of region 0: ${JSON.stringify(line)}`)
+  }
+})
+
+test("the pinned block is outside every span", () => {
+  const { spans } = compose(rows("p", 3), [region("t", 40, 5)], 76, 20, [0], 0, PLAIN)
+  assert.ok(spans[0].start >= 3, "spans begin after the pinned rows")
+})

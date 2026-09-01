@@ -62,6 +62,14 @@ export function allocate(needs: number[], available: number, min: number = MIN_R
  */
 export type Region = { head: string[]; body: string[]; maxBody?: number }
 
+/**
+ * Where a region ended up on screen, as inclusive indices into the returned lines.
+ *
+ * The pane needs this to answer "which list is the pointer over?" — a wheel event carries a row,
+ * and without a map from rows back to regions the sidebar would have to guess which list to move.
+ */
+export type Span = { start: number; end: number }
+
 /** Rows a region wants: its head, the capped part of its body, and a divider if that clips. */
 function desired(region: Region): number {
   const cap = region.maxBody ?? region.body.length
@@ -87,11 +95,11 @@ export function compose(
   offsets: number[],
   focus: number,
   style: Style,
-): { lines: string[]; offsets: number[] } {
+): { lines: string[]; offsets: number[]; spans: Span[] } {
   const dim = style.muted ?? ((s: string) => s)
   const bold = style.bold ?? ((s: string) => s)
 
-  if (!regions.length) return { lines: pinned.slice(0, height), offsets: [] }
+  if (!regions.length) return { lines: pinned.slice(0, height), offsets: [], spans: [] }
 
   const wants = regions.map(desired)
   const total = wants.reduce((a, b) => a + b, 0)
@@ -108,29 +116,32 @@ export function compose(
 
   const lines: string[] = [...head]
   const settled: number[] = []
+  const spans: Span[] = []
   regions.forEach((region, i) => {
     const cap = caps[i]
-    if (cap <= 0) { settled.push(0); return }
+    if (cap <= 0) { settled.push(0); spans.push({ start: -1, end: -1 }); return }
+    const start = lines.length
 
     const headRows = region.head.slice(0, cap)
     lines.push(...headRows)
     let room = cap - headRows.length
     if (region.maxBody !== undefined) room = Math.min(room, region.maxBody + 1)
-    if (room <= 0) { settled.push(0); return }
+    if (room <= 0) { settled.push(0); spans.push({ start, end: lines.length - 1 }); return }
 
     const clipped = region.body.length > Math.min(room, region.maxBody ?? room)
     const shown = clipped ? Math.min(room - 1, region.maxBody ?? room - 1) : region.body.length
     const w = window(region.body, Math.max(0, shown), offsets[i] ?? 0)
     settled.push(w.offset)
     lines.push(...w.lines)
-    if (!clipped) return
+    if (!clipped) { spans.push({ start, end: lines.length - 1 }); return }
 
     const tag = marker(w.above, w.below)
     const rule = "─".repeat(Math.max(0, width - (tag ? displayWidth(tag) + 2 : 0)))
     // The focused region's marker is bright so you can see which one the keys are driving.
     const paint = i === focus ? bold : dim
     lines.push(tag ? dim(rule) + " " + paint(tag) + dim(" ") : dim(rule))
+    spans.push({ start, end: lines.length - 1 })
   })
 
-  return { lines, offsets: settled }
+  return { lines, offsets: settled, spans }
 }

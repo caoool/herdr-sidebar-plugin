@@ -25,7 +25,7 @@ import { sessionSection } from "./sections/session/index.js"
 import { toolsSection } from "./sections/tools/index.js"
 import type { Section } from "./sections/types.js"
 import type { PaneAgent } from "./types.js"
-import { compose, type Region } from "./layout.js"
+import { compose, type Region, type Span } from "./layout.js"
 
 const SECTIONS: Section[] = [quotaSection(), sessionSection(), toolsSection()]
 
@@ -34,6 +34,8 @@ let dirty = true
 /** One scroll position per region, and which region the keys are driving. */
 let offsets: number[] = []
 let focus = 0
+/** Where each region sits on screen, so a wheel event can be attributed to the list under it. */
+let spans: Span[] = []
 /**
  * Reset the scroll when the pane changes agent — the list underneath is a different session's,
  * so an offset carried over from the last one points at nothing meaningful.
@@ -126,6 +128,7 @@ function render() {
 
   const composed = compose(pinned, regions, height, width, offsets, focus, TERMINAL)
   offsets = composed.offsets
+  spans = composed.spans
   if (focus >= regions.length) focus = 0
   const out = composed.lines
   process.stdout.write("\x1b[2J\x1b[H\n" + out.map((l) => (l ? `  ${l}` : l)).join("\n"))
@@ -157,9 +160,51 @@ process.stdout.on("resize", () => { dirty = true; render() })
  * Raw mode turns off the terminal's own Ctrl-C handling, so it is handled here explicitly;
  * without this the sidebar could not be interrupted from its own pane.
  */
+/**
+ * The first line of output is a blank spacer and every row is indented, so a line's index in the
+ * composed output sits two rows below the top of the screen. Mouse rows are 1-based.
+ */
+const ROW_OFFSET = 2
+
+/** Which region is under a screen row, or -1 if the row belongs to the pinned block. */
+function regionAt(row: number): number {
+  const line = row - ROW_OFFSET
+  return spans.findIndex((s) => s.start >= 0 && line >= s.start && line <= s.end)
+}
+
+/**
+ * Wheel events, in SGR mouse form: `ESC [ < button ; column ; row (M|m)`.
+ *
+ * Buttons 64 and 65 are wheel up and down. The event carries the row it happened on, which is
+ * what makes hovering work: the list under the pointer moves, and nothing else does. The pointer
+ * also takes focus, so the keys afterwards drive whatever was last scrolled.
+ */
+const MOUSE = /\x1b\[<(\d+);(\d+);(\d+)[Mm]/g
+
+function onMouse(data: string): boolean {
+  let acted = false
+  MOUSE.lastIndex = 0
+  let m: RegExpExecArray | null
+  while ((m = MOUSE.exec(data)) !== null) {
+    const button = Number(m[1])
+    if (button !== 64 && button !== 65) continue
+    const at = regionAt(Number(m[3]))
+    if (at < 0) continue
+    focus = at
+    offsets[at] = (offsets[at] ?? 0) + (button === 64 ? -1 : 1)
+    acted = true
+  }
+  return acted
+}
+
 function onKey(chunk: Buffer) {
   const key = chunk.toString("utf8")
   if (key === "\x03") return process.exit(0)
+  if (key.includes("\x1b[<")) {
+    if (!onMouse(key)) return
+    dirty = true
+    return render()
+  }
   const at = offsets[focus] ?? 0
   if (key === "\t") focus += 1
   else if (key === "\x1b[A" || key === "k") offsets[focus] = at - 1
@@ -181,9 +226,14 @@ function onKey(chunk: Buffer) {
  * thing that moves is the list the keys are pointed at.
  */
 if (process.stdout.isTTY) {
-  process.stdout.write("\x1b[?1049h")
-  // Leaving the alternate screen on would corrupt whatever herdr draws in this pane next.
-  const restore = () => { try { process.stdout.write("\x1b[?1049l") } catch { /* already gone */ } }
+  // Alternate screen, plus SGR mouse reporting so the wheel is delivered here with the row it
+  // happened on. Claiming the wheel costs nothing that was working: the alternate screen has no
+  // scrollback for herdr's own wheel to move.
+  process.stdout.write("\x1b[?1049h\x1b[?1000h\x1b[?1006h")
+  // Leaving either mode on would corrupt whatever herdr draws in this pane next.
+  const restore = () => {
+    try { process.stdout.write("\x1b[?1006l\x1b[?1000l\x1b[?1049l") } catch { /* already gone */ }
+  }
   process.on("exit", restore)
   process.on("SIGTERM", () => { restore(); process.exit(0) })
   process.on("SIGHUP", () => { restore(); process.exit(0) })
