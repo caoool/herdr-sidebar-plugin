@@ -1,5 +1,4 @@
-import { homedir, tmpdir } from "node:os"
-import { appendFileSync } from "node:fs"
+import { homedir } from "node:os"
 import { join } from "node:path"
 import type { Section, SectionContext } from "../types.js"
 import type { ShellSnapshot } from "./types.js"
@@ -37,12 +36,6 @@ export function shellsSection(): Section {
 
     async refresh(ctx) {
       subject = ctx.subject
-      try {
-        appendFileSync("/Users/lu/.sidebar-shells.log", JSON.stringify({
-          t: new Date().toISOString(), enter: true,
-          agent: ctx.subject?.agent ?? null, sid: ctx.subject?.sessionId ?? null,
-        }) + "\n")
-      } catch { /* diagnostic only */ }
       if (!subject?.sessionId) {
         snapshot = null
         return
@@ -60,11 +53,6 @@ export function shellsSection(): Section {
         running = dir ? await readGrokShells(join(dir, "updates.jsonl")).catch(() => []) : []
       }
 
-      try {
-        appendFileSync("/Users/lu/.sidebar-shells.log",
-          JSON.stringify({ t: new Date().toISOString(), agent, sessionId, found: running.length,
-            sample: running[0]?.command?.slice(0, 60) ?? null }) + "\n")
-      } catch { /* diagnostic only */ }
       snapshot = { agent, running, observedAt: Date.now() }
     },
 
