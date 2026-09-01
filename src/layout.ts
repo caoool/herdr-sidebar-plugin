@@ -135,11 +135,12 @@ export function compose(
     lines.push(...w.lines)
     if (!clipped) { spans.push({ start, end: lines.length - 1 }); return }
 
+    // The count alone, flush right like every value in the sidebar. A rule across the pane drew
+    // a line between two blocks that already read as separate, and competed with the figures.
     const tag = marker(w.above, w.below)
-    const rule = "─".repeat(Math.max(0, width - (tag ? displayWidth(tag) + 2 : 0)))
     // The focused region's marker is bright so you can see which one the keys are driving.
     const paint = i === focus ? bold : dim
-    lines.push(tag ? dim(rule) + " " + paint(tag) + dim(" ") : dim(rule))
+    lines.push(tag ? " ".repeat(Math.max(0, width - displayWidth(tag))) + paint(tag) : "")
     spans.push({ start, end: lines.length - 1 })
   })
 
