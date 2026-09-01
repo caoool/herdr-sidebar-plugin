@@ -48,13 +48,21 @@ test("an unfamiliar model id is passed through rather than mangled", () => {
   assert.equal(displayName("some-future-model"), "some-future-model")
 })
 
-test("the long-context variant changes the denominator", () => {
-  assert.equal(windowFor("claude-opus-5", false), 200_000)
-  assert.equal(windowFor("claude-opus-5", true), 1_000_000)
+test("the window is never inferred from the model", () => {
+  // Inferring it from the model family reported 310% for a session that was at 62%: the same
+  // model runs with different windows by tier. A dash is the honest rendering of not knowing.
+  delete process.env.HERDR_SIDEBAR_CONTEXT_WINDOW
+  assert.equal(windowFor("claude-opus-5"), null)
+  assert.equal(windowFor("some-future-model"), null)
+  assert.equal(windowFor(null), null)
 })
 
-test("an unrecognised model yields no window, so no percentage is computed", () => {
-  // A wrong denominator would put every percentage out; a dash is the honest rendering.
-  assert.equal(windowFor("some-future-model", false), null)
-  assert.equal(windowFor(null, false), null)
+test("an explicit window is honoured, and nonsense is refused", () => {
+  process.env.HERDR_SIDEBAR_CONTEXT_WINDOW = "1000000"
+  assert.equal(windowFor("claude-opus-5"), 1_000_000)
+  process.env.HERDR_SIDEBAR_CONTEXT_WINDOW = "-5"
+  assert.equal(windowFor("claude-opus-5"), null)
+  process.env.HERDR_SIDEBAR_CONTEXT_WINDOW = "not a number"
+  assert.equal(windowFor("claude-opus-5"), null)
+  delete process.env.HERDR_SIDEBAR_CONTEXT_WINDOW
 })

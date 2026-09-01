@@ -101,34 +101,25 @@ export function displayName(modelId: string | null): string | null {
 }
 
 /**
- * The context window a model is running with.
+ * The context window, when it can be known — which, without a status line, is only when the user
+ * says so.
  *
- * This is the one figure that is inferred rather than read: the transcript records what a turn
- * consumed but never the limit. The long-context variant is recorded separately by Claude as a
- * `[1m]` suffix on the model id wherever it tracks per-model usage, which is what distinguishes
- * the two. A model that is not recognised yields null, and the panel shows a dash — the window
- * is not guessed at, because a wrong denominator would put every percentage out.
+ * This is the single fact the statusLine payload carried that nothing else records. Three
+ * inferences were tried and all of them are wrong:
+ *
+ *   - A table by model family. The same model runs with different windows depending on tier and
+ *     beta access; assuming the smaller one reported 310% for a session that was at 62%.
+ *   - The `[1m]` suffix Claude uses in `~/.claude.json`'s per-model usage. That map is cleared
+ *     periodically and was already empty when checked.
+ *   - The same suffix appearing in the transcript. It does appear — but only because a tool
+ *     result had printed it, which is the transcript quoting the machine back at itself.
+ *
+ * So it is not guessed. Unset, the percentage is left blank and the panel shows a dash; set
+ * `HERDR_SIDEBAR_CONTEXT_WINDOW` to the window in tokens and the percentage returns.
  */
-export function windowFor(modelId: string | null, longContext: boolean): number | null {
-  if (!modelId) return null
-  if (longContext) return 1_000_000
-  if (/^claude-(opus|sonnet)-/.test(modelId)) return 200_000
-  if (/^claude-haiku-/.test(modelId)) return 200_000
-  return null
-}
-
-/** Whether this project has been running the long-context variant of the model. */
-export async function usesLongContext(cwd: string | null): Promise<boolean> {
-  if (!cwd) return false
-  const text = await readFile(join(homedir(), ".claude.json"), "utf8").catch(() => null)
-  if (!text) return false
-  try {
-    const projects = JSON.parse(text)?.projects ?? {}
-    const usage = projects[cwd]?.lastModelUsage ?? {}
-    return Object.keys(usage).some((id) => id.includes("[1m]"))
-  } catch {
-    return false
-  }
+export function windowFor(_modelId: string | null): number | null {
+  const configured = Number(process.env.HERDR_SIDEBAR_CONTEXT_WINDOW)
+  return Number.isFinite(configured) && configured > 0 ? configured : null
 }
 
 /** How much of the transcript to read for the newest turn. */
@@ -141,6 +132,10 @@ export async function readFromTranscript(sessionId: string): Promise<
   if (!transcriptPath) return null
 
   const latest = latestIn(await tailLines(transcriptPath, TAIL_BYTES))
-  const windowSize = windowFor(latest.model, await usesLongContext(latest.cwd))
-  return { ...latest, transcriptPath, name: await nameFor(sessionId), windowSize }
+  return {
+    ...latest,
+    transcriptPath,
+    name: await nameFor(sessionId),
+    windowSize: windowFor(latest.model),
+  }
 }
