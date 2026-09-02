@@ -1,4 +1,4 @@
-import { truncate } from "../session/format.js"
+import { tally, truncate } from "../session/format.js"
 import type { Style } from "../../ansi.js"
 import { displayWidth } from "../../width.js"
 import type { Shell, ShellKind } from "./types.js"
@@ -7,6 +7,18 @@ const DASH = "—"
 
 /** A shell is a command; a monitor is an eye kept on one. */
 const GLYPH: Record<ShellKind, string> = { shell: "$", monitor: "⟳" }
+
+/**
+ * How many background jobs are alive, sitting on the list the way `tools` does.
+ *
+ * The figure is the row count — unlike tools, there is no hidden total — but the dim name is
+ * what makes the block readable once headings are gone, and monitors share the list so the
+ * title stays `shells` rather than splitting in two.
+ */
+export function shellsTally(running: Shell[] | null, width: number, style: Style): string {
+  const n = running?.length ?? 0
+  return tally("shells", n ? String(n) : null, width, style)
+}
 
 /**
  * One row per running command, glyph first.

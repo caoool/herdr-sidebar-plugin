@@ -2,7 +2,7 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 import type { Section, SectionContext } from "../types.js"
 import type { ShellSnapshot } from "./types.js"
-import { shellItems } from "./format.js"
+import { shellItems, shellsTally } from "./format.js"
 import { CLAUDE_SESSIONS, readClaudeShells } from "./sources/claude.js"
 import { readCodexShells } from "./sources/codex.js"
 import { readGrokShells } from "./sources/grok.js"
@@ -54,12 +54,14 @@ export function shellsSection(): Section {
       snapshot = { agent, running, observedAt: Date.now() }
     },
 
-    // No total row: the figure would only recount the rows under it. Nothing running means no
-    // rows at all rather than a dash — an empty list here is the ordinary state, not a gap.
+    // Hidden when nothing is running — an empty list here is the ordinary state, not a gap.
+    // The dim title sits in `head` so it stays put if the list ever has to scroll.
     regions(width, style) {
       if (!subject) return []
-      const rows = shellItems(snapshot?.running ?? null, width, style)
-      return rows.length ? [{ head: rows, body: [] }] : []
+      const running = snapshot?.running ?? null
+      const rows = shellItems(running, width, style)
+      if (!rows.length) return []
+      return [{ head: [shellsTally(running, width, style)], body: rows }]
     },
   }
 }

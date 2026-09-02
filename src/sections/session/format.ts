@@ -149,11 +149,11 @@ export function spread(
 /**
  * A list's total, sitting directly on the list it counts.
  *
- * This is what survives of the section headings. It is kept only where the figure says something
- * the rows below do not — total calls, servers healthy of configured, todos done of planned —
- * and never on a list whose figure would just recount the visible rows. Dimmed throughout,
- * because it is context for the list rather than a reading in its own right, and with no blank
- * row under it so it reads as part of the list rather than as a heading over it.
+ * This is what survives of the section headings. Dimmed throughout, because it is context for
+ * the list rather than a reading in its own right, and with no blank row under it so it reads
+ * as part of the list rather than as a heading over it. The figure is kept where it says
+ * something the rows do not (calls, healthy/configured, done/planned) and is a count where
+ * that is all there is to say (shells, subagents).
  */
 export function tally(name: string, value: string | null, width: number, style: Style): string {
   const dim = style.muted ?? ((s: string) => s)

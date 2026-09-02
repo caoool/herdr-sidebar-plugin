@@ -320,9 +320,7 @@ rest.
 ```
 
 There are no section headings. What survives of them is a dim total row sitting directly on the
-list it counts — `tools 108`, `mcp 5/6`, `todos 3/9` — and only where the figure says something
-the rows do not. Shells and subagents get none, because theirs would just recount the rows under
-it.
+list it counts — `tools 108`, `mcp 5/6`, `todos 3/9`, `shells 2`, `subagents 1`.
 
 Regions are separated by a single blank row and never by a rule. With the headings gone the blank
 is the only structure the pane has, and a rule across 34 columns drew a line between two blocks

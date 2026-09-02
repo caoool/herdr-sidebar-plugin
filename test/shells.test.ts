@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { runningIn as grokRunning } from "../src/sections/shells/sources/grok.js"
 import { runningIn as codexRunning, commandIn as codexCommand } from "../src/sections/shells/sources/codex.js"
 import { runningShells, commandIn as claudeCommand } from "../src/sections/shells/sources/claude.js"
-import { shellItems } from "../src/sections/shells/format.js"
+import { shellItems, shellsTally } from "../src/sections/shells/format.js"
 import { PLAIN, TERMINAL } from "../src/ansi.js"
 import { displayWidth } from "../src/width.js"
 import type { Shell } from "../src/sections/shells/types.js"
@@ -139,6 +139,18 @@ test("nothing running renders no rows at all, not a dash", () => {
   // An empty list here is the ordinary state. A dash would suggest a reading failed.
   assert.deepEqual(shellItems(null, 30, PLAIN), [])
   assert.deepEqual(shellItems([], 30, PLAIN), [])
+})
+
+test("the shells tally is a dim title sitting on the list, like tools", () => {
+  const line = shellsTally(running, 30, TERMINAL)
+  assert.equal(strip(line).startsWith("shells"), true, strip(line))
+  assert.ok(strip(line).endsWith("2"), strip(line))
+  assert.match(line, /^\x1b\[2mshells\x1b\[0m/, "the name is dimmed")
+  assert.match(line, /\x1b\[2m2\x1b\[0m$/, "so is the figure")
+})
+
+test("styling the shells tally never changes its width", () => {
+  assert.equal(strip(shellsTally(running, 30, TERMINAL)), shellsTally(running, 30, PLAIN))
 })
 
 test("shells and monitors get different glyphs, and the monitor is the lit one", () => {

@@ -2,7 +2,7 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 import type { Section, SectionContext } from "../types.js"
 import type { Subagent, SubagentSnapshot } from "./types.js"
-import { subagentItems } from "./format.js"
+import { subagentItems, subagentsTally } from "./format.js"
 import { readClaudeSubagents } from "./sources/claude.js"
 import { CODEX_SESSIONS, readCodexSubagents } from "./sources/codex.js"
 import { readGrokSubagents } from "./sources/grok.js"
@@ -56,8 +56,10 @@ export function subagentsSection(): Section {
     // Hidden when nothing is in flight, like SHELLS: a row here always means work is running.
     regions(width, style) {
       if (!subject) return []
-      const rows = subagentItems(snapshot?.running ?? null, width, style)
-      return rows.length ? [{ head: rows, body: [] }] : []
+      const running = snapshot?.running ?? null
+      const rows = subagentItems(running, width, style)
+      if (!rows.length) return []
+      return [{ head: [subagentsTally(running, width, style)], body: rows }]
     },
   }
 }

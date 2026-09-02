@@ -1,10 +1,16 @@
-import { truncate } from "../session/format.js"
+import { tally, truncate } from "../session/format.js"
 import type { Style } from "../../ansi.js"
 import { displayWidth } from "../../width.js"
 import type { Subagent } from "./types.js"
 
 const DASH = "—"
 const GLYPH = "◆"
+
+/** How many subagents are in flight. Same dim title row as tools / mcp / shells. */
+export function subagentsTally(running: Subagent[] | null, width: number, style: Style): string {
+  const n = running?.length ?? 0
+  return tally("subagents", n ? String(n) : null, width, style)
+}
 
 /**
  * One row per running subagent.

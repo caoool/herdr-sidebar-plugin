@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { runningIn as grokRunning } from "../src/sections/subagents/sources/grok.js"
 import { childOf, isFinished } from "../src/sections/subagents/sources/codex.js"
 import { scan } from "../src/sections/subagents/sources/claude.js"
-import { subagentItems } from "../src/sections/subagents/format.js"
+import { subagentItems, subagentsTally } from "../src/sections/subagents/format.js"
 import { PLAIN, TERMINAL } from "../src/ansi.js"
 import { displayWidth } from "../src/width.js"
 import type { Subagent } from "../src/sections/subagents/types.js"
@@ -113,6 +113,18 @@ const running: Subagent[] = [
 test("nothing in flight renders no rows at all, not a dash", () => {
   assert.deepEqual(subagentItems(null, 30, PLAIN), [])
   assert.deepEqual(subagentItems([], 30, PLAIN), [])
+})
+
+test("the subagents tally is a dim title sitting on the list, like tools", () => {
+  const line = subagentsTally(running, 30, TERMINAL)
+  assert.ok(strip(line).startsWith("subagents"), strip(line))
+  assert.ok(strip(line).endsWith("2"), strip(line))
+  assert.match(line, /^\x1b\[2msubagents\x1b\[0m/, "the name is dimmed")
+  assert.match(line, /\x1b\[2m2\x1b\[0m$/, "so is the figure")
+})
+
+test("styling the subagents tally never changes its width", () => {
+  assert.equal(strip(subagentsTally(running, 30, TERMINAL)), subagentsTally(running, 30, PLAIN))
 })
 
 test("a row shows what the subagent was asked to do", () => {
