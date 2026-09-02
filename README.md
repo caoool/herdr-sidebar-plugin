@@ -276,7 +276,11 @@ command = "caoool.sidebar.toggle"
 description = "toggle sidebar"
 ```
 
-Width defaults to 34 columns; override with `HERDR_SIDEBAR_COLS`.
+Width is **34 columns**, a cell count rather than a split ratio. Override with
+`HERDR_SIDEBAR_COLS`. When the installed herdr advertises `--width` or `--max-width`
+on `plugin pane open`, those are passed through; otherwise the pane is narrowed
+after a 50/50 split. If the tab later grows past the cap, the pane shrinks itself
+back — a divider the user dragged inward is left alone.
 
 ## Layout
 

@@ -30,6 +30,7 @@ import type { Section } from "./sections/types.js"
 import type { PaneAgent } from "./types.js"
 import { compose, live, type Frame, type Region, type Span } from "./layout.js"
 import { SAFE_CWD } from "./run.js"
+import { enforceMaxWidth } from "./narrow.js"
 
 /**
  * The stack, in the order it is read down the screen.
@@ -166,8 +167,20 @@ for (const target of new Set(SECTIONS.flatMap((s) => s.watch()))) {
 
 // A slow tick covers what the watchers cannot: a directory that did not exist at startup, a
 // platform without recursive watching, and a change of subject when focus moves.
-setInterval(() => refresh().then(render), 5000)
-process.stdout.on("resize", () => { dirty = true; render() })
+setInterval(() => {
+  refresh().then(render)
+  // Backup for a missed open-time narrow, and for a layout change that did not
+  // deliver SIGWINCH. Early-returns when already at or under the cap.
+  void enforceMaxWidth().catch(() => {})
+}, 5000)
+
+/** Hold the column cap if the tab grew. Debounced so a drag does not spam herdr. */
+let capTimer: NodeJS.Timeout | null = null
+const holdWidth = () => {
+  if (capTimer) clearTimeout(capTimer)
+  capTimer = setTimeout(() => void enforceMaxWidth().catch(() => {}), 200)
+}
+process.stdout.on("resize", () => { dirty = true; render(); holdWidth() })
 
 /**
  * Scroll keys.

@@ -19,10 +19,14 @@ command = ["npm", "run", "build"]
 command = ["node", "bin/startup.mjs"]
 
 # The sidebar itself. Placement is overridden at open time to a right split.
+# `width` is a cell count. herdr 0.8.x honours it for popups only; splits still
+# open 50/50 and bin/sidebar.sh narrows afterwards. When a later herdr applies
+# this to splits, the open lands on 34 without the fallback.
 [[panes]]
 id = "sidebar"
 title = "sidebar"
 placement = "split"
+width = 34
 command = ["bash", "bin/pane.sh"]
 
 [[actions]]

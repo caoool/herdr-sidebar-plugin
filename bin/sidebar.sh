@@ -14,12 +14,25 @@ TAB="${HERDR_TAB_ID:-}"
 mkdir -p "$STATE/panes"
 LOCK="$STATE/panes/${TAB//:/_}"
 
-# `plugin pane open` has no width option and a split defaults to 50/50 — far too wide.
-# `pane resize --amount` is a fraction of the TAB's total width by which the divider moves
-# (verified: amount 0.25 shifted a divider 59 columns in a 235-column tab), so the amount
-# needed depends on the current layout. Read it, then move the divider once.
+# The sidebar is a fixed column count, not a split ratio. A 50/50 open is far too
+# wide, and a ratio that lands on 34 columns today grows with the terminal tomorrow.
+# Prefer herdr's own flags when the installed binary advertises them — `--width` is
+# in the schema but 0.8.2's CLI does not list it (and passing an unknown flag fails
+# the open); `--max-width` does not exist there at all. Probe help, never guess.
+# Formula kept in lockstep with src/narrow.ts.
 TARGET_COLS="${HERDR_SIDEBAR_COLS:-34}"
+help=$("$HERDR" plugin pane open --help 2>&1 || true)
+width_flags=""
+printf '%s\n' "$help" | grep -Eq -- '(^|[[:space:]])--width([[:space:]]|=|$)' && \
+  width_flags="$width_flags --width $TARGET_COLS"
+printf '%s\n' "$help" | grep -Eq -- '(^|[[:space:]])--max-width([[:space:]]|=|$)' && \
+  width_flags="$width_flags --max-width $TARGET_COLS"
+
 narrow() {
+  # Fallback when herdr opened a ratio split. `pane resize --amount` is a fraction
+  # of the TAB's total width (verified: 0.25 shifted a divider 59 columns in a
+  # 235-column tab). Skip when already at or under the cap, including one column
+  # of rounding — shrinking a user-narrowed pane would be the opposite of max-width.
   "$HERDR" pane layout --pane "$1" 2>/dev/null | TARGET="$TARGET_COLS" PANE="$1" \
     /usr/bin/env python3 -c '
 import json,os,sys
@@ -43,8 +56,11 @@ open_pane() {
   # opens a second sidebar — and if our own pane were ever misdetected as an agent, the
   # hook would recurse.
   if live; then return 0; fi
+  # $width_flags is empty or a pair of tokens we control (flag + integer).
+  # shellcheck disable=SC2086
   id=$("$HERDR" plugin pane open --plugin caoool.sidebar --entrypoint sidebar \
-        --placement split --direction right --target-pane "$TARGET" --no-focus 2>/dev/null \
+        --placement split --direction right --target-pane "$TARGET" --no-focus \
+        $width_flags 2>/dev/null \
       | /usr/bin/env python3 -c 'import json,sys;print(json.load(sys.stdin)["result"]["plugin_pane"]["pane"]["pane_id"])' 2>/dev/null) || return 0
   [ -n "$id" ] || return 0
   printf '%s' "$id" > "$LOCK"
