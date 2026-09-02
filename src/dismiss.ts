@@ -3,9 +3,10 @@
  *
  * It opens on `pane.agent_detected`, so it should leave once there is no agent to sit beside.
  * herdr offers no event for that: quitting an agent leaves its pane alive at a shell prompt,
- * so nothing exits and nothing closes — the pane merely disappears from `agents[]`. Verified
- * directly: after `/exit`, `agents` went from `['w6:p1']` to `[]` while the pane stayed with
- * `agent: null`. That absence is the only available signal.
+ * so nothing exits and nothing closes. `agents[]` is not a reliable signal on its own —
+ * Grok's detector keys off an OSC title ending ` - grok`, which often survives `/exit`,
+ * Ctrl+D and Ctrl+C, so the pane stays listed while the foreground is already a shell.
+ * Presence is therefore "a same-tab agent whose foreground process is still that agent".
  *
  * Two guards keep it from firing wrongly:
  *

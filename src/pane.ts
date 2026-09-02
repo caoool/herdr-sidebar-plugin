@@ -17,6 +17,7 @@
  */
 import { watch, statSync } from "node:fs"
 import { agentsInTab, herdrBin, listAgents, resolveSubject, selfPaneId, selfTabId } from "./herdr.js"
+import { anyLive } from "./process.js"
 import { execFile } from "node:child_process"
 import { TERMINAL } from "./ansi.js"
 import { autoDismiss } from "./dismiss.js"
@@ -80,8 +81,13 @@ function dismiss() {
   const self = selfPaneId()
   // Ask herdr to close the pane rather than merely exiting: whether a pane disappears when
   // its command ends is herdr's configuration to decide, and this leaves nothing behind.
-  if (self) execFile(herdrBin(), ["plugin", "pane", "close", self], { cwd: SAFE_CWD }, () => process.exit(0))
-  else process.exit(0)
+  // plugin pane close is the right call; pane close is the fallback if reinstall dropped
+  // plugin ownership while the pane itself stayed.
+  const done = () => process.exit(0)
+  if (!self) return done()
+  execFile(herdrBin(), ["plugin", "pane", "close", self], { cwd: SAFE_CWD }, () => {
+    execFile(herdrBin(), ["pane", "close", self], { cwd: SAFE_CWD }, done)
+  })
 }
 
 /**
@@ -110,7 +116,11 @@ async function refresh() {
 
   const agents = await listAgents().catch(() => [])
   const now = Date.now()
-  dismisser.note(agentsInTab(agents, selfTabId()).length > 0, now)
+  const inTab = agentsInTab(agents, selfTabId())
+  // agents[] is not enough: herdr keeps a Grok pane in the list after /exit because
+  // the OSC title still ends in " - grok". The foreground process is what actually left.
+  const present = await anyLive(inTab).catch(() => inTab.length > 0)
+  dismisser.note(present, now)
   if (dismisser.ready(now)) return dismiss()
   // Keep the previous subject when the snapshot comes back empty, rather than blanking.
   subject = resolveSubject(agents, selfTabId(), subject)
