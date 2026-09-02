@@ -262,10 +262,9 @@ tab, and closes itself once that agent is gone.
 Closing has to be noticed rather than received. Quitting an agent (`/exit`, Ctrl+D, Ctrl+C)
 leaves its pane alive at a shell prompt, so herdr fires no pane event. Screen detection can
 also keep the pane in `agents[]` after Grok exits, because the OSC title still ends ` - grok`.
-The sidebar therefore watches the pane's foreground process, and waits out a short grace
-period first, because detection can lose an agent for a moment during a redraw or a restart.
-A sidebar opened by hand in a tab where no agent has ever run stays put. Set
-`HERDR_SIDEBAR_AUTO_CLOSE=0` to keep it open regardless.
+The sidebar therefore watches the pane's foreground process and closes as soon as that
+process is no longer the agent. A sidebar opened by hand in a tab where no agent has ever
+run stays put. Set `HERDR_SIDEBAR_AUTO_CLOSE=0` to keep it open regardless.
 
 `sidebar: toggle` opens and closes it by hand:
 

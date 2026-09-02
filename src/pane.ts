@@ -75,7 +75,7 @@ const buildStamp = (): number => {
 const startedWith = buildStamp()
 
 /** Opens with an agent, so it leaves with one. See src/dismiss.ts for why this is polled. */
-const dismisser = autoDismiss(process.env.HERDR_SIDEBAR_AUTO_CLOSE !== "0", 12_000)
+const dismisser = autoDismiss(process.env.HERDR_SIDEBAR_AUTO_CLOSE !== "0", 0)
 
 function dismiss() {
   const self = selfPaneId()
@@ -183,6 +183,19 @@ setInterval(() => {
   // deliver SIGWINCH. Early-returns when already at or under the cap.
   void enforceMaxWidth().catch(() => {})
 }, 5000)
+
+// Process exit is not a watched file. Poll often enough that /exit closes the sidebar
+// on the next second rather than waiting out the five-second section refresh.
+setInterval(() => {
+  void (async () => {
+    const agents = await listAgents().catch(() => [])
+    const now = Date.now()
+    const inTab = agentsInTab(agents, selfTabId())
+    const present = await anyLive(inTab).catch(() => inTab.length > 0)
+    dismisser.note(present, now)
+    if (dismisser.ready(now)) dismiss()
+  })()
+}, 1000)
 
 /** Hold the column cap if the tab grew. Debounced so a drag does not spam herdr. */
 let capTimer: NodeJS.Timeout | null = null

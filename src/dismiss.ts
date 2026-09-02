@@ -8,19 +8,14 @@
  * Ctrl+D and Ctrl+C, so the pane stays listed while the foreground is already a shell.
  * Presence is therefore "a same-tab agent whose foreground process is still that agent".
  *
- * Two guards keep it from firing wrongly:
- *
- *   Nothing happens until an agent has actually been seen, so a sidebar opened by hand in a
- *   tab that has none is not dismissed the instant it appears.
- *
- *   Absence must persist. Detection is screen-based and can drop an agent for a moment during
- *   a redraw, a model switch, or a restart; closing on the first empty poll would turn a
- *   flicker into a quit.
+ * Nothing happens until an agent has actually been seen, so a sidebar opened by hand in a
+ * tab that has none is not dismissed the instant it appears. Once an agent has been seen
+ * and the foreground process is no longer that agent, close is immediate (grace 0).
  */
 export type Dismisser = {
   /** Record whether the tab currently holds an agent. */
   note(present: boolean, now: number): void
-  /** Whether the grace period has elapsed with no agent present. */
+  /** Whether the sidebar should close: an agent was seen, and is now gone. */
   ready(now: number): boolean
 }
 
