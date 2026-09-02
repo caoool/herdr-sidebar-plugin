@@ -93,3 +93,38 @@ test("Grok's doctor output survives the log noise it prints first", () => {
   const noisy = `\x1b[2m2026-08-31T11:06:31Z\x1b[0m \x1b[31mERROR\x1b[0m worker quit\n[{"name":"files","ok":false}]`
   assert.deepEqual(parseGrokMcp(list, noisy), [{ name: "files", status: "failed" }])
 })
+
+// Captured from `grok mcp doctor --json` on 2026-09-03 (Grok 1.0.13). MCP servers now
+// come from plugins, not config.toml — `grok mcp list --json` is `[]`.
+const GROK_DOCTOR = JSON.stringify({
+  sources: [
+    { path: "~/.grok/config.toml", status: { status: "found", server_count: 0 } },
+    { path: "plugin: cloudflare", status: { status: "found", server_count: 5 } },
+  ],
+  servers: [
+    { name: "chrome-devtools", healthy: true },
+    { name: "context7", healthy: true },
+    { name: "cloudflare-docs", healthy: true },
+    { name: "cloudflare-api", healthy: false },
+  ],
+})
+
+test("Grok plugin MCP servers come from doctor when mcp list is empty", () => {
+  const servers = parseGrokMcp("[]", GROK_DOCTOR)
+  assert.deepEqual(servers.map((s) => s.name), [
+    "chrome-devtools", "context7", "cloudflare-docs", "cloudflare-api",
+  ])
+  assert.deepEqual(servers.map((s) => s.status), [
+    "connected", "connected", "connected", "failed",
+  ])
+})
+
+test("Grok doctor object after ANSI log noise still parses", () => {
+  const noisy = `\x1b[2m2026-09-02T16:42:45Z\x1b[0m \x1b[31mERROR\x1b[0m worker quit\n${GROK_DOCTOR}`
+  assert.equal(parseGrokMcp("[]", noisy).length, 4)
+  assert.equal(parseGrokMcp("[]", noisy)[0].name, "chrome-devtools")
+})
+
+test("an empty Grok list without a doctor is still empty, not a guess", () => {
+  assert.deepEqual(parseGrokMcp("[]", null), [])
+})

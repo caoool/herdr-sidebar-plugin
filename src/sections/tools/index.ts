@@ -90,12 +90,17 @@ async function check(agent: ProviderKind): Promise<McpServer[] | null> {
     return out === null ? null : parseCodexMcp(out)
   }
   const list = await run("grok", ["mcp", "list", "--json"], 10_000)
-  if (list === null) return null
-  const configured = parseGrokMcp(list, null)
-  // The doctor is slow and needs auth; there is nothing for it to check when nothing is set up.
-  if (!configured.length) return []
-  const doctor = await run("grok", ["mcp", "doctor", "--json"], 20_000)
-  return parseGrokMcp(list, doctor)
+  // From 1.0.13, plugin MCP servers do not appear in `mcp list` — that is `[]` even
+  // when doctor reports a dozen. Always run doctor; skip it and we cache an empty
+  // list and hide the section. 45s because nine HTTP servers with auth failures
+  // already take ~25s on a live machine, and the check runs in the background.
+  const doctor = await run("grok", ["mcp", "doctor", "--json"], 45_000)
+  if (list === null && doctor === null) return null
+  const servers = parseGrokMcp(list ?? "[]", doctor)
+  // Doctor timed out and list was empty: do not cache "nothing configured", or the
+  // next minute of refreshes will believe the empty reading.
+  if (!servers.length && doctor === null) return null
+  return servers
 }
 
 /**
